@@ -1,0 +1,35 @@
+name: 🍥 发布到正式版
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 获取 TEST 当前版本
+        uses: actions/checkout@v4
+
+      - name: 推送到正式仓库
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git clone https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/nomimimomo/mianmian.git stable
+
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            ./ stable/
+
+          cd stable
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "正式版已经与 TEST 一致，无需发布。"
+            exit 0
+          fi
+
+          git commit -m "Release from TEST"
+          git push origin HEAD:main
