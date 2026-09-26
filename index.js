@@ -1747,7 +1747,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '6.6', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '6.7', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -2686,7 +2686,7 @@
     const mmDismissedTags = new WeakMap();
     function mmUnclosedTags(value) {
         const stack = [];
-        const tags = /<\/?([A-Za-z][\w:.-]*)(?:\s[^<>]*?)?\s*\/?>/g;
+        const tags = /<\/?([^\s<>/]+)(?:\s[^<>]*?)?\s*\/?>/g;
         const voidTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
         for (const match of String(value || '').matchAll(tags)) {
             const full = match[0], name = match[1];
@@ -3348,7 +3348,7 @@
         mmCreateLauncher();
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
-        console.log('[鲜虾鱼板面] V6.6 loaded');
+        console.log('[鲜虾鱼板面] V6.7 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
