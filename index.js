@@ -325,6 +325,13 @@
         const vv = hostWindow.visualViewport;
         return { x: vv?.offsetLeft || 0, y: vv?.offsetTop || 0, w: vv?.width || hostWindow.innerWidth, h: vv?.height || hostWindow.innerHeight };
     }
+    function awmNarrowPanelWidth(vp) {
+        // A phone in landscape may be wider than the 600px mobile breakpoint.
+        // Fit between the outer character columns instead of restoring a desktop slot width.
+        if (awmLayoutDevice() !== 'desktop' || vp.w > 800) return null;
+        const margin = Math.round(vp.w * .08);
+        return { left: vp.x + margin, width: Math.round(vp.w - margin * 2) };
+    }
     function awmLayoutVerticalBand() {
         const vp = awmLayoutViewport();
         const visible = selector => {
@@ -360,10 +367,10 @@
         if (!panel || panel.style.display === 'none' || !value) return;
         const vp = awmLayoutViewport(), mobile = awmLayoutDevice() === 'mobile';
         if (mobile) panel.style.height = Math.round(Math.min(Math.max(220, vp.h - 16), Math.max(220, Math.min(vp.h - 16, +value.size || 620)))) + 'px';
-        else panel.style.width = Math.round(Math.min(Math.max(220, vp.w - 16), Math.max(240, Math.min(vp.w - 16, +value.size || 680)))) + 'px';
+        else panel.style.width = (awmNarrowPanelWidth(vp)?.width || Math.round(Math.min(Math.max(220, vp.w - 16), Math.max(240, Math.min(vp.w - 16, +value.size || 680))))) + 'px';
         const band = awmLayoutFitHeight(panel);
         const rect = panel.getBoundingClientRect();
-        const left = vp.x + Math.max(0, Math.min(vp.w - rect.width, (+value.x || 0) * vp.w));
+        const left = awmNarrowPanelWidth(vp)?.left ?? vp.x + Math.max(0, Math.min(vp.w - rect.width, (+value.x || 0) * vp.w));
         const storedTop = vp.y + (+value.y || 0) * vp.h;
         const top = band ? (mobile ? Math.max(band.top, Math.min(band.bottom - rect.height, storedTop)) : band.top)
             : vp.y + Math.max(0, Math.min(vp.h - rect.height, (+value.y || 0) * vp.h));
@@ -377,9 +384,11 @@
         else if (state.locked) {
             const panel = root.getElementById(PANEL_ID);
             if (panel && panel.style.display !== 'none') {
+                const narrow = awmNarrowPanelWidth(awmLayoutViewport());
+                if (narrow) panel.style.width = narrow.width + 'px';
                 const band = awmLayoutFitHeight(panel);
                 const rect = panel.getBoundingClientRect(), vp = awmLayoutViewport();
-                panel.style.left = (parseFloat(panel.style.left) || 0) + vp.x + (vp.w - rect.width) / 2 - rect.left + 'px';
+                panel.style.left = (parseFloat(panel.style.left) || 0) + (narrow?.left ?? vp.x + (vp.w - rect.width) / 2) - rect.left + 'px';
                 const top = band ? (awmLayoutDevice() === 'mobile' ? band.top + (band.bottom - band.top - rect.height) / 2 : band.top)
                     : vp.y + (vp.h - rect.height) / 2;
                 panel.style.top = (parseFloat(panel.style.top) || 0) + top - rect.top + 'px';
@@ -456,9 +465,11 @@
                 return toast('下次打开面板将恢复默认位置', 'success');
             }
             panel.style.width = ''; panel.style.height = ''; panel.style.left = '0px'; panel.style.top = '0px';
+            const narrow = awmNarrowPanelWidth(awmLayoutViewport());
+            if (narrow) panel.style.width = narrow.width + 'px';
             const band = awmLayoutFitHeight(panel);
             const rect = panel.getBoundingClientRect(), vp = awmLayoutViewport();
-            panel.style.left = (vp.x + (vp.w - rect.width) / 2 - rect.left) + 'px';
+            panel.style.left = ((narrow?.left ?? vp.x + (vp.w - rect.width) / 2) - rect.left) + 'px';
             const top = band ? (awmLayoutDevice() === 'mobile' ? band.top + (band.bottom - band.top - rect.height) / 2 : band.top)
                 : vp.y + (vp.h - rect.height) / 2;
             panel.style.top = (top - rect.top) + 'px';
@@ -529,14 +540,15 @@
         const offsetX = vv ? vv.offsetLeft : 0;
         const offsetY = vv ? vv.offsetTop : 0;
 
-        panel.style.width = Math.min(panel.getBoundingClientRect().width, Math.max(220, vw - 16)) + 'px';
+        const narrow = awmNarrowPanelWidth(awmLayoutViewport());
+        panel.style.width = (narrow?.width ?? Math.min(panel.getBoundingClientRect().width, Math.max(220, vw - 16))) + 'px';
         if (awmLayoutDevice() === 'mobile') panel.style.height = '';
         const band = awmLayoutFitHeight(panel);
         const rect = panel.getBoundingClientRect();
         const curLeft = parseFloat(panel.style.left) || 0;
         const curTop = parseFloat(panel.style.top) || 0;
 
-        const desiredLeft = offsetX + (vw - rect.width) / 2;
+        const desiredLeft = narrow?.left ?? offsetX + (vw - rect.width) / 2;
         const desiredTop = band ? (awmLayoutDevice() === 'mobile'
             ? band.top + (band.bottom - band.top - rect.height) / 2 : band.top)
             : offsetY + (vh - rect.height) / 2;
@@ -1809,7 +1821,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '7.4', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '7.5', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3429,7 +3441,7 @@
         mmCreateLauncher();
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
-        console.log('[鲜虾鱼板面] V7.4 loaded');
+        console.log('[鲜虾鱼板面] V7.5 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
