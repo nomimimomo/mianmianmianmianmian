@@ -325,26 +325,26 @@
         const vv = hostWindow.visualViewport;
         return { x: vv?.offsetLeft || 0, y: vv?.offsetTop || 0, w: vv?.width || hostWindow.innerWidth, h: vv?.height || hostWindow.innerHeight };
     }
-    function awmLandscapeDrop() {
+    function awmLayoutVerticalBand() {
         const vp = awmLayoutViewport();
-        return vp.w > vp.h && awmLayoutDevice() === 'desktop' ? 24 : 0;
+        if (awmLayoutDevice() !== 'desktop' || vp.w <= vp.h) return null;
+        const visible = selector => {
+            const element = root.querySelector(selector);
+            if (!element || hostWindow.getComputedStyle(element).display === 'none') return null;
+            const rect = element.getBoundingClientRect();
+            return rect.height >= 8 && rect.bottom > vp.y && rect.top < vp.y + vp.h ? rect : null;
+        };
+        const topBar = visible('#top-bar') || visible('#top_bar');
+        const sendForm = visible('#send_form') || visible('#chat-input-container');
+        let top = vp.y + 8, bottom = vp.y + vp.h - 8;
+        if (topBar && topBar.bottom < vp.y + Math.min(200, vp.h * .35)) top = Math.max(top, topBar.bottom + 8);
+        if (sendForm && sendForm.top > top + 160) bottom = Math.min(bottom, sendForm.top - 8);
+        return bottom > top + 120 ? { top, bottom } : { top: vp.y + 8, bottom: vp.y + vp.h - 8 };
     }
-    function awmLayoutShiftSavedOnce() {
-        // V7.1: saved desktop slots follow the requested 24px landscape drop once.
-        const marker = AWM_LAYOUT_KEY + '.v71-landscape-drop';
-        if (!awmLandscapeDrop() || hostWindow.localStorage.getItem(marker)) return;
-        try {
-            const all = JSON.parse(hostWindow.localStorage.getItem(AWM_LAYOUT_KEY) || '{}');
-            const desktop = all.desktop;
-            if (desktop) {
-                const shift = awmLandscapeDrop() / awmLayoutViewport().h;
-                const move = value => { if (value && Number.isFinite(+value.y)) value.y = +value.y + shift; };
-                move(desktop.current);
-                Object.values(desktop.slots || {}).forEach(move);
-                hostWindow.localStorage.setItem(AWM_LAYOUT_KEY, JSON.stringify(all));
-            }
-            hostWindow.localStorage.setItem(marker, '1');
-        } catch (error) { mmLog('layout', 'migration', String(error)); }
+    function awmLayoutFitHeight(panel) {
+        const band = awmLayoutVerticalBand();
+        if (band) panel.style.height = Math.round(band.bottom - band.top) + 'px';
+        return band;
     }
     function awmLayoutCapture() {
         const panel = root.getElementById(PANEL_ID), vp = awmLayoutViewport();
@@ -358,9 +358,10 @@
         const vp = awmLayoutViewport(), mobile = awmLayoutDevice() === 'mobile';
         if (mobile) panel.style.height = Math.round(Math.min(Math.max(220, vp.h - 16), Math.max(220, Math.min(vp.h - 16, +value.size || 620)))) + 'px';
         else panel.style.width = Math.round(Math.min(Math.max(220, vp.w - 16), Math.max(240, Math.min(vp.w - 16, +value.size || 680)))) + 'px';
+        const band = awmLayoutFitHeight(panel);
         const rect = panel.getBoundingClientRect();
         const left = vp.x + Math.max(0, Math.min(vp.w - rect.width, (+value.x || 0) * vp.w));
-        const top = vp.y + Math.max(0, Math.min(vp.h - rect.height, (+value.y || 0) * vp.h));
+        const top = band ? band.top : vp.y + Math.max(0, Math.min(vp.h - rect.height, (+value.y || 0) * vp.h));
         panel.style.left = (parseFloat(panel.style.left) || 0) + left - rect.left + 'px';
         panel.style.top = (parseFloat(panel.style.top) || 0) + top - rect.top + 'px';
     }
@@ -371,9 +372,10 @@
         else if (state.locked) {
             const panel = root.getElementById(PANEL_ID);
             if (panel && panel.style.display !== 'none') {
+                const band = awmLayoutFitHeight(panel);
                 const rect = panel.getBoundingClientRect(), vp = awmLayoutViewport();
                 panel.style.left = (parseFloat(panel.style.left) || 0) + vp.x + (vp.w - rect.width) / 2 - rect.left + 'px';
-                panel.style.top = (parseFloat(panel.style.top) || 0) + vp.y + Math.min(vp.h - rect.height, (vp.h - rect.height) / 2 + awmLandscapeDrop()) - rect.top + 'px';
+                panel.style.top = (parseFloat(panel.style.top) || 0) + (band ? band.top : vp.y + (vp.h - rect.height) / 2) - rect.top + 'px';
             }
         }
     }
@@ -446,9 +448,10 @@
                 return toast('下次打开面板将恢复默认位置', 'success');
             }
             panel.style.width = ''; panel.style.height = ''; panel.style.left = '0px'; panel.style.top = '0px';
+            const band = awmLayoutFitHeight(panel);
             const rect = panel.getBoundingClientRect(), vp = awmLayoutViewport();
             panel.style.left = (vp.x + (vp.w - rect.width) / 2 - rect.left) + 'px';
-            panel.style.top = (vp.y + Math.min(vp.h - rect.height, (vp.h - rect.height) / 2 + awmLandscapeDrop()) - rect.top) + 'px';
+            panel.style.top = ((band ? band.top : vp.y + (vp.h - rect.height) / 2) - rect.top) + 'px';
             state.current = awmLayoutCapture(); if (state.locked) state.slots[state.slot] = state.current; awmLayoutWrite(state);
             toast('已恢复默认位置', 'success');
         };
@@ -481,7 +484,8 @@
             if (!dragging) return;
             const vp = awmLayoutViewport();
             panel.style.left = Math.max(vp.x, Math.min(vp.x + vp.w - panel.offsetWidth, e.clientX - offsetX)) + 'px';
-            panel.style.top = Math.max(vp.y, Math.min(vp.y + vp.h - panel.offsetHeight, e.clientY - offsetY)) + 'px';
+            const band = awmLayoutVerticalBand();
+            panel.style.top = (band ? band.top : Math.max(vp.y, Math.min(vp.y + vp.h - panel.offsetHeight, e.clientY - offsetY))) + 'px';
         });
 
         head.addEventListener('pointerup', () => {
@@ -513,30 +517,41 @@
         const offsetY = vv ? vv.offsetTop : 0;
 
         panel.style.width = Math.min(panel.getBoundingClientRect().width, Math.max(220, vw - 16)) + 'px';
+        const band = awmLayoutFitHeight(panel);
         const rect = panel.getBoundingClientRect();
         const curLeft = parseFloat(panel.style.left) || 0;
         const curTop = parseFloat(panel.style.top) || 0;
 
         const desiredLeft = offsetX + (vw - rect.width) / 2;
-        const desiredTop = offsetY + Math.min(vh - rect.height, (vh - rect.height) / 2 + awmLandscapeDrop());
+        const desiredTop = band ? band.top : offsetY + (vh - rect.height) / 2;
 
         panel.style.left = (curLeft + (desiredLeft - rect.left)) + 'px';
         panel.style.top = (curTop + (desiredTop - rect.top)) + 'px';
     }
 
     let vvBound = false;
+    let layoutBoundsObserver = null;
     function bindViewportListeners() {
         if (vvBound) return;
         vvBound = true;
         hostWindow.addEventListener('resize', centerPanel);
         hostWindow.visualViewport?.addEventListener('resize', centerPanel);
         hostWindow.visualViewport?.addEventListener('scroll', centerPanel);
+        if (hostWindow.ResizeObserver) {
+            layoutBoundsObserver = new hostWindow.ResizeObserver(centerPanel);
+            for (const selector of ['#top-bar', '#top_bar', '#send_form', '#chat-input-container']) {
+                const node = root.querySelector(selector);
+                if (node) layoutBoundsObserver.observe(node);
+            }
+        }
     }
     function unbindViewportListeners() {
         vvBound = false;
         hostWindow.removeEventListener('resize', centerPanel);
         hostWindow.visualViewport?.removeEventListener('resize', centerPanel);
         hostWindow.visualViewport?.removeEventListener('scroll', centerPanel);
+        layoutBoundsObserver?.disconnect();
+        layoutBoundsObserver = null;
     }
 
     function open() {
@@ -549,7 +564,6 @@
         panel.style.height = '';
         panel.style.display = 'block';
         awmLayoutEnsureHandle(panel);
-        awmLayoutShiftSavedOnce();
         awmLayoutShowLock(panel);
         hydrateTavernData();
         render(awmCurrentPage);
@@ -1779,7 +1793,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '7.1', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '7.2', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3399,7 +3413,7 @@
         mmCreateLauncher();
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
-        console.log('[鲜虾鱼板面] V7.1 loaded');
+        console.log('[鲜虾鱼板面] V7.2 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
