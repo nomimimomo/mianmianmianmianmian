@@ -278,6 +278,7 @@
                     <button class="awm-tab active" data-page="mianmian" data-mm-side="char" title="Char" aria-label="Char">C</button>
                     <button class="awm-tab" data-page="mianmian" data-mm-side="user" title="User" aria-label="User">U</button>
                     <button class="awm-tab" data-page="styles">文风</button>
+                    <button class="awm-tab" data-page="settings">设置</button>
                 </div><button id="awmClose" type="button">×</button></div>
             </div>
             <div class="awm-main" id="awmMain"></div>
@@ -324,6 +325,27 @@
         const vv = hostWindow.visualViewport;
         return { x: vv?.offsetLeft || 0, y: vv?.offsetTop || 0, w: vv?.width || hostWindow.innerWidth, h: vv?.height || hostWindow.innerHeight };
     }
+    function awmLandscapeDrop() {
+        const vp = awmLayoutViewport();
+        return vp.w > vp.h && awmLayoutDevice() === 'desktop' ? 24 : 0;
+    }
+    function awmLayoutShiftSavedOnce() {
+        // V7.1: saved desktop slots follow the requested 24px landscape drop once.
+        const marker = AWM_LAYOUT_KEY + '.v71-landscape-drop';
+        if (!awmLandscapeDrop() || hostWindow.localStorage.getItem(marker)) return;
+        try {
+            const all = JSON.parse(hostWindow.localStorage.getItem(AWM_LAYOUT_KEY) || '{}');
+            const desktop = all.desktop;
+            if (desktop) {
+                const shift = awmLandscapeDrop() / awmLayoutViewport().h;
+                const move = value => { if (value && Number.isFinite(+value.y)) value.y = +value.y + shift; };
+                move(desktop.current);
+                Object.values(desktop.slots || {}).forEach(move);
+                hostWindow.localStorage.setItem(AWM_LAYOUT_KEY, JSON.stringify(all));
+            }
+            hostWindow.localStorage.setItem(marker, '1');
+        } catch (error) { mmLog('layout', 'migration', String(error)); }
+    }
     function awmLayoutCapture() {
         const panel = root.getElementById(PANEL_ID), vp = awmLayoutViewport();
         const rect = panel.getBoundingClientRect();
@@ -351,7 +373,7 @@
             if (panel && panel.style.display !== 'none') {
                 const rect = panel.getBoundingClientRect(), vp = awmLayoutViewport();
                 panel.style.left = (parseFloat(panel.style.left) || 0) + vp.x + (vp.w - rect.width) / 2 - rect.left + 'px';
-                panel.style.top = (parseFloat(panel.style.top) || 0) + vp.y + (vp.h - rect.height) / 2 - rect.top + 'px';
+                panel.style.top = (parseFloat(panel.style.top) || 0) + vp.y + Math.min(vp.h - rect.height, (vp.h - rect.height) / 2 + awmLandscapeDrop()) - rect.top + 'px';
             }
         }
     }
@@ -426,7 +448,7 @@
             panel.style.width = ''; panel.style.height = ''; panel.style.left = '0px'; panel.style.top = '0px';
             const rect = panel.getBoundingClientRect(), vp = awmLayoutViewport();
             panel.style.left = (vp.x + (vp.w - rect.width) / 2 - rect.left) + 'px';
-            panel.style.top = (vp.y + (vp.h - rect.height) / 2 - rect.top) + 'px';
+            panel.style.top = (vp.y + Math.min(vp.h - rect.height, (vp.h - rect.height) / 2 + awmLandscapeDrop()) - rect.top) + 'px';
             state.current = awmLayoutCapture(); if (state.locked) state.slots[state.slot] = state.current; awmLayoutWrite(state);
             toast('已恢复默认位置', 'success');
         };
@@ -496,7 +518,7 @@
         const curTop = parseFloat(panel.style.top) || 0;
 
         const desiredLeft = offsetX + (vw - rect.width) / 2;
-        const desiredTop = offsetY + (vh - rect.height) / 2;
+        const desiredTop = offsetY + Math.min(vh - rect.height, (vh - rect.height) / 2 + awmLandscapeDrop());
 
         panel.style.left = (curLeft + (desiredLeft - rect.left)) + 'px';
         panel.style.top = (curTop + (desiredTop - rect.top)) + 'px';
@@ -527,9 +549,10 @@
         panel.style.height = '';
         panel.style.display = 'block';
         awmLayoutEnsureHandle(panel);
+        awmLayoutShiftSavedOnce();
         awmLayoutShowLock(panel);
         hydrateTavernData();
-        render(awmCurrentPage === 'settings' ? 'mianmian' : awmCurrentPage);
+        render(awmCurrentPage);
         mmLog('panel', 'panel', 'open');
         centerPanel();
         // 面板首次插入 DOM 时字体/图片等可能还没完成排版，下一帧再校正一次更保险。
@@ -581,6 +604,7 @@
         awmCurrentPage=page;
         if (page === 'mianmian') renderMian(main);
         if (page === 'styles') renderStyles(main);
+        if (page === 'settings') renderPanelSettings(main);
         awmSyncNav(); awmFixContrast();
     }
 
@@ -1257,8 +1281,19 @@
     }
     // 9. 设置 / 酒馆文风库
     // ============================================================
-    function bindExtensionSettings(main) {
+    function renderPanelSettings(main) {
+        main.innerHTML = `<section class="awm-card" aria-labelledby="awmLayoutTitle">
+            <h3 id="awmLayoutTitle">面板位置与大小</h3>
+            <div class="awm-layout-controls">
+                <button class="awm-btn" id="awmLayoutLock" type="button"></button>
+                <select class="awm-select" id="awmLayoutSlot" aria-label="面板位置槽"><option value="1">位置 1</option><option value="2">位置 2</option><option value="3">位置 3</option></select>
+                <button class="awm-btn" id="awmLayoutSave" type="button">保存到此槽</button>
+                <button class="awm-btn" id="awmLayoutReset" type="button">恢复默认位置</button>
+            </div>
+        </section>`;
         awmLayoutBindSettings(main);
+    }
+    function bindExtensionSettings(main) {
         main.querySelector('#awmStorageMode').value=mmStorageMode();
         const launcherToggle=main.querySelector('#awmLauncherVisible');
         launcherToggle.checked=mmLauncherVisible();
@@ -1744,7 +1779,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '7.0', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '7.1', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3364,7 +3399,7 @@
         mmCreateLauncher();
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
-        console.log('[鲜虾鱼板面] V7.0 loaded');
+        console.log('[鲜虾鱼板面] V7.1 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
