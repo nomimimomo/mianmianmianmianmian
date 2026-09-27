@@ -1744,7 +1744,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '6.9', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '7.0', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3351,9 +3351,6 @@
             wrapper.innerHTML=await response.text();
             if(root.getElementById(MM_EXTENSION_SETTINGS_ID))return;
             target.appendChild(wrapper);
-            wrapper.querySelector('[data-mm-open]').onclick=open;
-            const available=['getCharacterNames','getPersonaIds','getWorldbookNames'].every(name=>!!mmHelperFn(name));
-            wrapper.querySelector('[data-mm-bridge-status]').textContent=available?'酒馆资料接口已连接':'角色、User 和世界书操作需要酒馆助手提供相应接口；文风与浏览器草稿仍可使用。';
             bindExtensionSettings(wrapper);
         }catch(error){console.warn('[鲜虾鱼板面] 扩展设置未加载',error);}
     }
@@ -3367,7 +3364,7 @@
         mmCreateLauncher();
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
-        console.log('[鲜虾鱼板面] V6.9 loaded');
+        console.log('[鲜虾鱼板面] V7.0 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});

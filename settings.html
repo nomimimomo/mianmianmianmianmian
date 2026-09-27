@@ -1,38 +1,30 @@
 <div class="awm-extension-config extension_container">
   <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-      <b>鲜虾鱼板面 V6.9</b>
+      <b>鲜虾鱼板面 V7.0</b>
       <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content">
       <div class="awm-extension-settings-content">
-        <p>在酒馆中编辑角色、User、世界书与文风。</p>
-        <button class="menu_button" type="button" data-mm-open>打开面板</button>
-        <p data-mm-bridge-status class="awm-extension-status" role="status"></p>
-
-        <section class="awm-extension-card">
-          <b>数据存储</b>
-          <p class="awm-extension-hint">文风和插件设置保存在酒馆的全局数据中。这里的数据不会作为世界书，也不会自动进入上下文。</p>
-          <label class="awm-extension-line"><span>存储位置</span><select id="awmStorageMode"><option value="tavern">酒馆（默认）</option><option value="browser">浏览器</option></select></label>
+        <section class="awm-extension-card" aria-labelledby="awmStorageTitle">
+          <h3 id="awmStorageTitle">数据存储</h3>
+          <label class="awm-extension-line awm-storage-line"><span>存储位置</span><select id="awmStorageMode"><option value="tavern">酒馆（默认）</option><option value="browser">浏览器</option></select></label>
           <div class="awm-extension-actions"><button class="menu_button" id="awmImportData" type="button">导入数据</button><button class="menu_button" id="awmExportData" type="button">导出数据</button><button class="menu_button" id="awmClearTavernData" type="button">清除鲜虾鱼板面数据</button></div>
         </section>
 
-        <section class="awm-extension-card">
-          <b>面板位置与大小</b>
-          <p class="awm-extension-hint">解锁后拖动标题栏移动面板；电脑拖左右边缘调宽度，手机拖底部调高度。锁定后保存当前槽位。</p>
-          <div class="awm-extension-actions"><button class="menu_button" id="awmLayoutLock" type="button"></button><select id="awmLayoutSlot" aria-label="面板位置槽"><option value="1">位置 1</option><option value="2">位置 2</option><option value="3">位置 3</option></select><button class="menu_button" id="awmLayoutSave" type="button">保存到此槽</button><button class="menu_button" id="awmLayoutReset" type="button">恢复默认位置</button></div>
+        <section class="awm-extension-card" aria-labelledby="awmLayoutTitle">
+          <h3 id="awmLayoutTitle">面板位置与大小</h3>
+          <div class="awm-extension-actions awm-position-line"><button class="menu_button" id="awmLayoutLock" type="button"></button><select id="awmLayoutSlot" aria-label="面板位置槽"><option value="1">位置 1</option><option value="2">位置 2</option><option value="3">位置 3</option></select><button class="menu_button" id="awmLayoutSave" type="button">保存到此槽</button><button class="menu_button" id="awmLayoutReset" type="button">恢复默认位置</button></div>
         </section>
 
-        <section class="awm-extension-card">
-          <b>悬浮按钮</b>
-          <label class="awm-extension-line"><span>显示悬浮按钮</span><input id="awmLauncherVisible" type="checkbox"></label>
-          <label class="awm-extension-line"><span>悬浮图标大小 <output id="awmLauncherSizeValue">56px</output></span><input id="awmLauncherSize" type="range" min="32" max="120" step="2" aria-label="悬浮图标大小"></label>
-          <button class="menu_button" id="awmResetLauncher" type="button">找回悬浮按钮</button>
+        <section class="awm-extension-card" aria-labelledby="awmLauncherTitle">
+          <h3 id="awmLauncherTitle">悬浮按钮</h3>
+          <div class="awm-extension-toggle-line"><label class="awm-extension-toggle"><input id="awmLauncherVisible" type="checkbox"><span class="awm-switch-track" aria-hidden="true"></span><span>显示悬浮按钮</span></label><button class="menu_button" id="awmResetLauncher" type="button">找回悬浮按钮</button></div>
+          <label class="awm-extension-line awm-size-line"><span>悬浮图标大小 <output id="awmLauncherSizeValue">56px</output></span><input id="awmLauncherSize" type="range" min="32" max="120" step="2" aria-label="悬浮图标大小"></label>
         </section>
 
-        <section class="awm-extension-card">
-          <b>诊断日志</b>
-          <p class="awm-extension-hint">仅记录操作阶段、结果与错误，不记录资料正文。</p>
+        <section class="awm-extension-card" aria-labelledby="awmLogTitle">
+          <h3 id="awmLogTitle">诊断日志</h3>
           <div class="awm-extension-actions"><button class="menu_button" id="awmExportMmLog" type="button">导出日志</button><button class="menu_button" id="awmClearMmLog" type="button">清空日志</button></div>
         </section>
       </div>
