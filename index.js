@@ -278,7 +278,6 @@
                     <button class="awm-tab active" data-page="mianmian" data-mm-side="char" title="Char" aria-label="Char">C</button>
                     <button class="awm-tab" data-page="mianmian" data-mm-side="user" title="User" aria-label="User">U</button>
                     <button class="awm-tab" data-page="styles">文风</button>
-                    <button class="awm-tab" data-page="settings">设置</button>
                 </div><button id="awmClose" type="button">×</button></div>
             </div>
             <div class="awm-main" id="awmMain"></div>
@@ -401,8 +400,9 @@
         const refresh = () => { const state = awmLayoutState(); lock.textContent = state.locked ? '🔒 已锁定' : '🔓 调整中'; slot.value = String(state.slot); awmLayoutShowLock(root.getElementById(PANEL_ID)); };
         lock.onclick = () => {
             const state = awmLayoutState(); state.locked = !state.locked;
-            state.current = awmLayoutCapture();
-            if (state.locked) state.slots[state.slot] = state.current;
+            const panel = root.getElementById(PANEL_ID);
+            if (panel?.style.display !== 'none') state.current = awmLayoutCapture();
+            if (state.locked && state.current) state.slots[state.slot] = state.current;
             awmLayoutWrite(state); refresh();
         };
         slot.onchange = () => {
@@ -412,11 +412,17 @@
             else toast('此位置尚未保存；调整后点击保存到此槽', 'warning');
         };
         main.querySelector('#awmLayoutSave').onclick = () => {
-            const state = awmLayoutState(); state.slots[state.slot] = awmLayoutCapture();
-            state.current = state.slots[state.slot]; awmLayoutWrite(state); toast('位置 ' + state.slot + ' 已保存', 'success');
+            const state = awmLayoutState(), panel = root.getElementById(PANEL_ID);
+            const position = panel?.style.display !== 'none' ? awmLayoutCapture() : state.current;
+            if (!position) return toast('请先打开面板并调整位置', 'warning');
+            state.slots[state.slot] = position; state.current = position; awmLayoutWrite(state); toast('位置 ' + state.slot + ' 已保存', 'success');
         };
         main.querySelector('#awmLayoutReset').onclick = () => {
             const panel = root.getElementById(PANEL_ID), state = awmLayoutState();
+            if (panel?.style.display === 'none') {
+                state.current = null; delete state.slots[state.slot]; awmLayoutWrite(state);
+                return toast('下次打开面板将恢复默认位置', 'success');
+            }
             panel.style.width = ''; panel.style.height = ''; panel.style.left = '0px'; panel.style.top = '0px';
             const rect = panel.getBoundingClientRect(), vp = awmLayoutViewport();
             panel.style.left = (vp.x + (vp.w - rect.width) / 2 - rect.left) + 'px';
@@ -523,7 +529,7 @@
         awmLayoutEnsureHandle(panel);
         awmLayoutShowLock(panel);
         hydrateTavernData();
-        render(awmCurrentPage);
+        render(awmCurrentPage === 'settings' ? 'mianmian' : awmCurrentPage);
         mmLog('panel', 'panel', 'open');
         centerPanel();
         // 面板首次插入 DOM 时字体/图片等可能还没完成排版，下一帧再校正一次更保险。
@@ -575,7 +581,6 @@
         awmCurrentPage=page;
         if (page === 'mianmian') renderMian(main);
         if (page === 'styles') renderStyles(main);
-        if (page === 'settings') renderSettings(main);
         awmSyncNav(); awmFixContrast();
     }
 
@@ -1252,23 +1257,9 @@
     }
     // 9. 设置 / 酒馆文风库
     // ============================================================
-    function renderSettings(main) {
-        main.innerHTML=`
-            <div class="awm-form" style="height:100%;overflow:auto;padding-right:2px">
-                <div class="awm-card">
-                    <div><b>数据存储</b><div class="awm-hint">文风和插件设置保存在酒馆的全局数据中。这里的数据不会作为世界书，也不会自动进入上下文。</div></div>
-                    <div style="margin-top:9px;display:flex;align-items:center;justify-content:space-between;gap:10px">
-                        <span class="awm-meta">存储位置</span><select class="awm-select" id="awmStorageMode"><option value="tavern" ${mmStorageMode() === 'tavern' ? 'selected' : ''}>酒馆（默认）</option><option value="browser" ${mmStorageMode() === 'browser' ? 'selected' : ''}>浏览器</option></select>
-                    </div>
-                    <div class="awm-mm-data-actions"><button class="awm-btn" id="awmImportData" type="button">导入数据</button><button class="awm-btn" id="awmExportData" type="button">导出数据</button></div>
-                    <button class="awm-btn" id="awmClearTavernData" type="button" style="margin-top:10px">清除鲜虾鱼板面数据</button>
-                </div>
-                <div class="awm-card"><b>面板位置与大小</b><div class="awm-hint">解锁后拖动标题栏 ↔ 移动整个面板；电脑拖左右边缘调宽度，手机拖底部调高度。锁定后保存当前槽位。</div><div class="awm-layout-controls"><button class="awm-btn" id="awmLayoutLock" type="button"></button><select class="awm-select" id="awmLayoutSlot" aria-label="面板位置槽"><option value="1">位置 1</option><option value="2">位置 2</option><option value="3">位置 3</option></select><button class="awm-btn" id="awmLayoutSave" type="button">保存到此槽</button><button class="awm-btn" id="awmLayoutReset" type="button">恢复默认位置</button></div></div>
-                <div class="awm-card"><label class="awm-chip" style="display:flex;align-items:center;gap:8px"><input id="awmLauncherVisible" type="checkbox">显示悬浮按钮</label><div style="margin-top:8px"><b>悬浮图标大小</b><div class="awm-layout-controls"><input id="awmLauncherSize" type="range" min="32" max="120" step="2" aria-label="悬浮图标大小"><output id="awmLauncherSizeValue"></output></div></div></div>
-                <div class="awm-card"><b>诊断日志</b><div class="awm-hint">仅记录操作阶段、结果与错误，不记录资料正文。</div><div class="awm-mm-data-actions"><button class="awm-btn" id="awmExportMmLog" type="button">导出日志</button><button class="awm-btn" id="awmClearMmLog" type="button">清空日志</button></div></div>
-            </div>`;
-
+    function bindExtensionSettings(main) {
         awmLayoutBindSettings(main);
+        main.querySelector('#awmStorageMode').value=mmStorageMode();
         const launcherToggle=main.querySelector('#awmLauncherVisible');
         launcherToggle.checked=mmLauncherVisible();
         launcherToggle.onchange=()=>mmSetLauncherVisible(launcherToggle.checked);
@@ -1286,6 +1277,12 @@
             catch (err) { e.target.value = previous; toast('切换失败：' + err.message, 'error'); }
         };
 
+        main.querySelector('#awmResetLauncher').onclick=()=>{
+            hostWindow.localStorage.removeItem(MM_LAUNCHER_KEY+'.position');
+            const button=root.getElementById('awm-launcher-v54');
+            if(button){button.style.left=button.style.top='';button.style.right='18px';button.style.bottom='95px';}
+            mmSetLauncherVisible(true);launcherToggle.checked=true;
+        };
         main.querySelector('#awmClearTavernData').onclick=()=>{
             if(mmStorageMode() === 'tavern' && !canUseTavernStorage()) return toast('当前没有可用的酒馆持久化接口','warning');
             const ok=mmStorageMode() === 'browser' ? (hostWindow.localStorage.removeItem(MM_LOCAL_KEY), true) : clearTavernData();
@@ -1293,7 +1290,7 @@
             runtimeData=clone(DEFAULT);
             tavernDataReady=true;
             toast('已清除鲜虾鱼板面数据','success');
-            render('styles');
+            if(root.getElementById(PANEL_ID)?.style.display !== 'none') render('styles');
         };
     }
 
@@ -1747,7 +1744,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '6.8', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '6.9', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3357,17 +3354,7 @@
             wrapper.querySelector('[data-mm-open]').onclick=open;
             const available=['getCharacterNames','getPersonaIds','getWorldbookNames'].every(name=>!!mmHelperFn(name));
             wrapper.querySelector('[data-mm-bridge-status]').textContent=available?'酒馆资料接口已连接':'角色、User 和世界书操作需要酒馆助手提供相应接口；文风与浏览器草稿仍可使用。';
-            const toggle=wrapper.querySelector('[data-mm-launcher-visible]');toggle.checked=mmLauncherVisible();
-            toggle.onchange=()=>mmSetLauncherVisible(toggle.checked);
-            const slider=wrapper.querySelector('[data-mm-launcher-size]');slider.value=String(mmLauncherSize(hostWindow.localStorage.getItem(MM_LAUNCHER_KEY+'.size')));
-            const sizeLabel=wrapper.querySelector('[data-mm-size-label]');sizeLabel.textContent=slider.value+'px';
-            slider.oninput=()=>{sizeLabel.textContent=mmLauncherSize(slider.value)+'px';};
-            wrapper.querySelector('[data-mm-reset-launcher]').onclick=()=>{
-                hostWindow.localStorage.removeItem(MM_LAUNCHER_KEY+'.position');
-                const button=root.getElementById('awm-launcher-v54');
-                if(button){button.style.left=button.style.top='';button.style.right='18px';button.style.bottom='95px';}
-                mmSetLauncherVisible(true);toggle.checked=true;
-            };
+            bindExtensionSettings(wrapper);
         }catch(error){console.warn('[鲜虾鱼板面] 扩展设置未加载',error);}
     }
     let mmInitialized=false;
@@ -3380,7 +3367,7 @@
         mmCreateLauncher();
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
-        console.log('[鲜虾鱼板面] V6.8 loaded');
+        console.log('[鲜虾鱼板面] V6.9 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});

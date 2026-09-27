@@ -1,5 +1,12 @@
-#awm-extension-settings .awm-extension-config{padding:0 8px}
-#awm-extension-settings .awm-extension-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0}
-#awm-extension-settings .awm-extension-row input[type=range]{max-width:180px;width:45%}
-#awm-extension-settings [data-mm-open]{margin:6px 0}
-#awm-extension-settings .awm-extension-status{font-size:.85em;opacity:.8}
+#awm-extension-settings .awm-extension-config{padding:0 8px;min-width:0}
+#awm-extension-settings .awm-extension-settings-content{min-width:0;padding:4px 0 12px;color:var(--SmartThemeBodyColor)}
+#awm-extension-settings .awm-extension-card{border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,8px);padding:10px;margin:10px 0;min-width:0;background:var(--SmartThemeBlurTintColor)}
+#awm-extension-settings .awm-extension-hint,#awm-extension-settings .awm-extension-status{font-size:.85em;opacity:.8;line-height:1.5;margin:5px 0 9px}
+#awm-extension-settings .awm-extension-line{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;margin:10px 0;flex-wrap:wrap}
+#awm-extension-settings .awm-extension-line>span{flex:1 1 145px;min-width:0}
+#awm-extension-settings .awm-extension-line input[type=range]{flex:1 1 130px;width:auto;min-width:100px;max-width:240px}
+#awm-extension-settings .awm-extension-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;min-width:0}
+#awm-extension-settings select{max-width:100%;min-width:0;flex:0 1 auto;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px);padding:5px 8px}
+#awm-extension-settings button.menu_button{display:inline-flex!important;align-items:center;justify-content:center;box-sizing:border-box;width:auto!important;min-width:max-content;max-width:100%;min-height:32px;padding:5px 10px;white-space:nowrap;writing-mode:horizontal-tb;flex:0 1 auto;margin:0}
+#awm-extension-settings [data-mm-open]{margin:5px 0 3px!important}
+@media(max-width:420px){#awm-extension-settings .awm-extension-card{padding:8px}#awm-extension-settings .awm-extension-actions{gap:5px}#awm-extension-settings button.menu_button{font-size:.9em}}
