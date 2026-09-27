@@ -328,7 +328,11 @@
     function awmNarrowPanelWidth(vp) {
         // A phone in landscape may be wider than the 600px mobile breakpoint.
         // Fit between the outer character columns instead of restoring a desktop slot width.
-        if (awmLayoutDevice() !== 'desktop' || vp.w > 800) return null;
+        const frameWidth = +hostWindow.outerWidth;
+        const zoom = +hostWindow.devicePixelRatio;
+        const zoomWidth = zoom > 0 && zoom < 1 ? vp.w * zoom : vp.w;
+        const visibleWidth = Number.isFinite(frameWidth) && frameWidth > 0 ? Math.min(vp.w, frameWidth, zoomWidth) : Math.min(vp.w, zoomWidth);
+        if (awmLayoutDevice() !== 'desktop' || visibleWidth > 800) return null;
         const margin = Math.round(vp.w * .08);
         return { left: vp.x + margin, width: Math.round(vp.w - margin * 2) };
     }
@@ -1821,7 +1825,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '7.5', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '7.6', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3441,7 +3445,7 @@
         mmCreateLauncher();
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
-        console.log('[鲜虾鱼板面] V7.5 loaded');
+        console.log('[鲜虾鱼板面] V7.6 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
