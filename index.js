@@ -2,6 +2,7 @@
 
 (function () {
     const ID = 'ame-style-management-v05';
+    const MM_EXECUTING_SCRIPT = document.currentScript?.src || '';
     const PANEL_ID = 'awm-panel-v03';
     const STYLE_ID = 'awm-style-v05';
 
@@ -1343,42 +1344,33 @@
     const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
+    function mmBackupReadUISettings() {
+        const raw = hostWindow.localStorage.getItem(AWM_LAYOUT_KEY);
+        if (!raw) return {};
+        const value = JSON.parse(raw);
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('界面设置记录格式异常');
+        return value;
+    }
     function mmBackupSettings() {
-        return Object.assign({}, MM_BACKUP_DEFAULT, load().settings?.backupCleaner || {});
-    }
-    let mmBackupPreferenceQueue = Promise.resolve();
-    function mmBackupPersist(changes) {
-        const pending = mmBackupPreferenceQueue.then(() => mmBackupCommitPreferences(changes));
-        mmBackupPreferenceQueue = pending.catch(() => {});
-        return pending;
-    }
-    async function mmBackupCommitPreferences(changes) {
-        const data = clone(load());
-        data.settings.backupCleaner = Object.assign(mmBackupSettings(), changes);
-        const value = mmNormalize(data), previous = runtimeData;
-        // 使用与鱼板面相同的数据容器及存储选择；等待助手写入并通知酒馆保存。
-        runtimeData = value;
+        const legacy = Object.assign({}, MM_BACKUP_DEFAULT, load().settings?.backupCleaner || {});
         try {
-            if (mmStorageMode() === 'browser') {
-                hostWindow.localStorage.setItem(MM_LOCAL_KEY, JSON.stringify(value));
-            } else {
-                if (!canUseTavernStorage()) throw new Error('酒馆持久化接口不可用，设置未保存');
-                const ctx = hostWindow.SillyTavern?.getContext?.();
-                const assign = mmHelperFn('insertOrAssignVariables');
-                if (assign) await assign({ [TAVERN_DATA_KEY]: clone(value) }, { type: 'global' });
-                else ctx.accountStorage.setItem(TAVERN_DATA_KEY, JSON.stringify(value));
-                if (typeof ctx?.saveSettings === 'function') await ctx.saveSettings();
-                else if (typeof ctx?.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
-            }
-            tavernDataReady = true;
-            const prefs = value.settings.backupCleaner;
-            mmLog('backupPreferences', 'settings', 'saved', '', undefined,
-                { retention: prefs.retention, schedule: prefs.schedule, storage: mmStorageMode() });
+            const prefs = mmBackupReadUISettings().backupCleaner;
+            return prefs && typeof prefs === 'object' && !Array.isArray(prefs)
+                ? Object.assign(legacy, prefs) : legacy;
         } catch (error) {
-            if (runtimeData === value) runtimeData = previous;
-            mmLog('backupPreferences', 'settings', 'failed', error);
-            throw error;
+            mmLog('backupPreferences', 'settings', 'read-failed', error);
+            return legacy;
         }
+    }
+    function mmBackupPersist(changes) {
+        // 与位置插槽保存在同一份轻量界面记录中；保留桌面、手机位置及其他字段。
+        const all = mmBackupReadUISettings();
+        all.backupCleaner = Object.assign(mmBackupSettings(), changes);
+        const encoded = JSON.stringify(all);
+        hostWindow.localStorage.setItem(AWM_LAYOUT_KEY, encoded);
+        if (hostWindow.localStorage.getItem(AWM_LAYOUT_KEY) !== encoded) throw new Error('界面设置未保存');
+        mmLog('backupPreferences', 'settings', 'saved', '', undefined,
+            { retention: all.backupCleaner.retention, schedule: all.backupCleaner.schedule, storage: 'panel-layout-settings' });
     }
     function mmBackupCutoff(retention, now = Date.now()) {
         if (retention === 'off') return null;
@@ -1460,8 +1452,8 @@
         if (!area) return;
         area.setAttribute('aria-busy', String(busy));
         area.querySelectorAll('button:not([data-backup-confirm]),input,select').forEach(node => { node.disabled = busy; });
-        const scan = area.querySelector('#awmBackupScan'), clean = area.querySelector('#awmBackupClean');
-        if (scan) scan.textContent = busy && action === 'scan' ? '…' : '预览过期备份';
+        const clean = area.querySelector('#awmBackupClean');
+        
         if (clean) clean.textContent = busy && action === 'clean' ? '…' : '立即清理';
     }
     function mmBackupConfirm(scan) {
@@ -1586,7 +1578,7 @@
         dialog.setAttribute('aria-labelledby', 'awmChatBackupDialogTitle');
         dialog.innerHTML = `<div class="awm-chat-backup-shell">
             <header><h3 id="awmChatBackupDialogTitle">聊天备份</h3><button type="button" data-close aria-label="关闭">×</button></header>
-            <div class="awm-chat-backup-tools"><label><input type="checkbox" data-all> 全选</label><button type="button" data-refresh>重新扫描</button></div>
+            <div class="awm-chat-backup-tools"><label><input type="checkbox" data-all> 全选</label><input type="search" data-search placeholder="搜索备份名称、日期" aria-label="搜索备份名称、日期"><button type="button" data-refresh>重新扫描</button></div>
             <div class="awm-chat-backup-list" data-list></div>
             <div class="awm-chat-backup-confirm" data-confirm hidden><p data-confirm-text></p><div><button type="button" data-cancel>取消</button><button type="button" data-accept>确认删除</button></div></div>
             <footer><span data-count>已选 0 个</span><button type="button" data-remove disabled>删除所选备份</button></footer>
@@ -1596,6 +1588,13 @@
         const q = key => dialog.querySelector('[data-' + key + ']');
         let files = [], busy = false, scanSeq = 0;
         const picks = new Set(), cache = new Map();
+        const visibleFiles = () => {
+            const text = q('search').value.trim().toLocaleLowerCase();
+            return !text ? files : files.filter(item => [item.name,
+                item.time ? new Date(item.time).toLocaleString() : '日期未知',
+                item.time ? new Date(item.time).getFullYear() + '-' + String(new Date(item.time).getMonth() + 1).padStart(2, '0') + '-' + String(new Date(item.time).getDate()).padStart(2, '0') : '']
+                .join(' ').toLocaleLowerCase().includes(text));
+        };
         const alive = () => dialog.isConnected && dialog.open;
         const status = text => { if (alive()) q('status').textContent = text; };
         const el = (tag, className, text) => {
@@ -1604,8 +1603,9 @@
         };
         const update = () => {
             q('count').textContent = '已选 ' + picks.size + ' 个 · 约 ' + mmBackupFormat(files.filter(x => picks.has(x.name)).reduce((a, x) => a + x.size, 0));
-            q('all').checked = files.length > 0 && picks.size === files.length;
-            q('all').indeterminate = picks.size > 0 && picks.size < files.length;
+            const visible = visibleFiles();
+            q('all').checked = visible.length > 0 && visible.every(x => picks.has(x.name));
+            q('all').indeterminate = visible.some(x => picks.has(x.name)) && !q('all').checked;
             q('remove').disabled = busy || !picks.size; q('confirm').hidden = true;
         };
         const setBusy = value => {
@@ -1615,8 +1615,8 @@
         };
         const render = () => {
             const list = q('list'); list.replaceChildren();
-            if (!files.length) list.append(el('p', '', '没有聊天备份。'));
-            for (const item of files) {
+            if (!visibleFiles().length) list.append(el('p', '', files.length ? '没有匹配的聊天备份。' : '没有聊天备份。'));
+            for (const item of visibleFiles()) {
                 const row = el('article', 'awm-chat-backup-row'), line = el('div', 'awm-chat-backup-line');
                 const check = el('input'); check.type = 'checkbox'; check.checked = picks.has(item.name);
                 check.setAttribute('aria-label', '选择 ' + item.name);
@@ -1668,7 +1668,8 @@
             finally { if (alive() && seq === scanSeq) setBusy(false); }
         };
         q('refresh').onclick = scan;
-        q('all').onchange = () => { picks.clear(); if (q('all').checked) files.forEach(x => picks.add(x.name)); render(); };
+        q('search').oninput = render;
+        q('all').onchange = () => { const checked = q('all').checked; visibleFiles().forEach(x => checked ? picks.add(x.name) : picks.delete(x.name)); render(); };
         q('remove').onclick = () => {
             q('confirm-text').textContent = '删除所选的 ' + picks.size + ' 个聊天备份？原始聊天记录保留。'; q('confirm').hidden = false;
         };
@@ -1716,16 +1717,17 @@
             q('awmBackupWeekly').hidden = mode !== 'weekly';
         };
         ['awmBackupRetention', 'awmBackupSchedule', 'awmBackupDailyTime', 'awmBackupWeeklyDay', 'awmBackupWeeklyTime'].forEach(id => {
-            q(id).onchange = async () => {
+            const persist = () => {
+                mmLog('backupPreferences', 'settings', 'changed', '', undefined, { field: id, value: q(id).value });
                 try {
-                    mmBackupStatus('…');
-                    await mmBackupPersist({ retention: q('awmBackupRetention').value, schedule: q('awmBackupSchedule').value, dailyTime: q('awmBackupDailyTime').value || '04:00', weeklyDay: q('awmBackupWeeklyDay').value, weeklyTime: q('awmBackupWeeklyTime').value || '04:00' });
+                    mmBackupPersist({ retention: q('awmBackupRetention').value, schedule: q('awmBackupSchedule').value, dailyTime: q('awmBackupDailyTime').value || '04:00', weeklyDay: q('awmBackupWeeklyDay').value, weeklyTime: q('awmBackupWeeklyTime').value || '04:00' });
                     sync(); mmBackupSchedule();
                     mmBackupStatus(q('awmBackupRetention').value === 'off' ? '自动清理未开启' : '设置已保存');
                 } catch (error) { mmBackupStatus('设置保存失败：' + error.message); mmLog('backupPreferences', 'settings', 'failed', error); }
             };
+            q(id).onchange = persist;
+            q(id).oninput = persist;
         });
-        q('awmBackupScan').onclick = mmBackupOpen;
         q('awmBackupManual').onclick = mmBackupOpen;
         q('awmBackupClean').onclick = () => mmBackupRun('clean');
         sync(); mmBackupSetBusy(mmBackupBusy);
@@ -2221,7 +2223,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '8.1', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '8.2', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3816,16 +3818,28 @@
         const target=root.querySelector('#extensions_settings2')||root.querySelector('#extensions_settings');
         if(!target){if(++mmSettingsAttempts<30)hostWindow.setTimeout(mmInjectExtensionSettings,1000);return;}
         try{
-            const script=root.currentScript?.src||[...root.scripts].map(s=>s.src)
-                .find(src=>/\/(?:鲜虾鱼板面|mianmianmianmianmian)\/index\.js(?:\?|$)/.test(decodeURI(src)));
+            const script=MM_EXECUTING_SCRIPT||[...root.scripts].map(s=>s.src)
+                .find(src=>/\/(?:鲜虾鱼板面|mianmian|mianmianmianmianmian)\/index\.js(?:\?|$)/.test(decodeURI(src)));
             const urls=[script&&new URL('settings.html',script),
+                '/scripts/extensions/third-party/mianmian/settings.html',
                 '/scripts/extensions/third-party/mianmianmianmianmian/settings.html',
                 '/scripts/extensions/third-party/鲜虾鱼板面/settings.html'].filter(Boolean);
-            let response;
-            for(const url of urls){try{const result=await hostWindow.fetch(url,{credentials:'same-origin'});if(result.ok){response=result;break;}}catch(_){}}
-            if(!response)throw new Error('settings.html 无法读取');
+            let html = '', selectedUrl = '';
+            for(const candidate of urls){
+                try {
+                    const url = new URL(candidate, hostWindow.location.href);
+                    url.searchParams.set('awm-version', '8.2');
+                    const result = await hostWindow.fetch(url.href, { credentials: 'same-origin', cache: 'no-store' });
+                    if (!result.ok) continue;
+                    const text = await result.text();
+                    if (!text.includes('data-awm-version="8.2"')) continue;
+                    html = text; selectedUrl = url.pathname; break;
+                } catch (_) {}
+            }
+            if(!html)throw new Error('没有找到 V8.2 的 settings.html，请确认扩展文件已完整更新');
             const wrapper=root.createElement('div');wrapper.id=MM_EXTENSION_SETTINGS_ID;
-            wrapper.innerHTML=await response.text();
+            wrapper.innerHTML=html;
+            mmLog('extensionSettings', 'settings', 'loaded', '', undefined, { version: '8.2', path: selectedUrl });
             if(root.getElementById(MM_EXTENSION_SETTINGS_ID))return;
             target.appendChild(wrapper);
             bindExtensionSettings(wrapper);
@@ -3842,7 +3856,7 @@
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V8.1 loaded');
+        console.log('[鲜虾鱼板面] V8.2 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});

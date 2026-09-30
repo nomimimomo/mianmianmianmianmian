@@ -75,3 +75,5 @@
 #awmChatBackupDialog .awm-chat-backup-confirm{padding:12px 18px;border-top:1px solid var(--SmartThemeBorderColor,#d9d7cf)}
 #awmChatBackupDialog .awm-chat-backup-confirm>div{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 @media(max-width:650px){#awmChatBackupDialog .awm-chat-backup-toggle{flex-wrap:wrap;gap:6px}#awmChatBackupDialog .awm-chat-backup-name{flex-basis:calc(100% - 30px)}#awmChatBackupDialog .awm-chat-backup-info{order:3;white-space:normal;flex-basis:100%}#awmChatBackupDialog footer{flex-wrap:wrap}}
+
+#awmChatBackupDialog .awm-chat-backup-tools input[type=search]{flex:1;min-width:100px;max-width:600px;width:100%;font:inherit;color:inherit;background:transparent;border:1px solid var(--SmartThemeBorderColor,#d9d7cf);border-radius:6px;padding:7px 10px}#awmChatBackupDialog .awm-chat-backup-tools{flex-wrap:wrap;gap:12px}
