@@ -1556,19 +1556,21 @@
     }
     function mmBackupLastMessage(text) {
         let last = null, nonempty = null, count = 0;
+        const searchParts = [];
         for (const line of String(text).replace(/^\uFEFF/, '').split(/\r?\n/)) {
             if (!line.trim()) continue;
             let item;
             try { item = JSON.parse(line); } catch (_) { throw new Error('备份包含损坏的消息，无法完整读取'); }
             if (item && typeof item === 'object' && typeof item.mes === 'string') {
                 last = item; count++;
+                searchParts.push(String(item.name || ''), item.mes);
                 if (item.mes.trim()) nonempty = item;
             }
         }
-        if (!last) return { name: '', text: '此备份没有聊天消息。', date: '', count: 0, emptyLast: false };
+        if (!last) return { name: '', text: '此备份没有聊天消息。', date: '', count: 0, emptyLast: false, searchText: '' };
         const shown = last.mes.trim() ? last : nonempty;
         return { name: String(shown?.name || ''), text: shown?.mes || '最后一条消息为空。',
-            date: String(shown?.send_date || ''), count, emptyLast: !last.mes.trim() };
+            date: String(shown?.send_date || ''), count, emptyLast: !last.mes.trim(), searchText: searchParts.join('\n').toLocaleLowerCase() };
     }
     async function mmBackupOpen() {
         const existing = root.getElementById('awmChatBackupDialog');
@@ -1578,7 +1580,7 @@
         dialog.setAttribute('aria-labelledby', 'awmChatBackupDialogTitle');
         dialog.innerHTML = `<div class="awm-chat-backup-shell">
             <header><h3 id="awmChatBackupDialogTitle">聊天备份</h3><button type="button" data-close aria-label="关闭">×</button></header>
-            <div class="awm-chat-backup-tools"><label><input type="checkbox" data-all> 全选</label><input type="search" data-search placeholder="搜索备份名称、日期" aria-label="搜索备份名称、日期"><button type="button" data-refresh>重新扫描</button></div>
+            <div class="awm-chat-backup-tools"><label><input type="checkbox" data-all> 全选</label><input type="search" data-search placeholder="搜索聊天内容关键词" aria-label="搜索聊天内容关键词"><button type="button" data-refresh>重新扫描</button></div>
             <div class="awm-chat-backup-list" data-list></div>
             <div class="awm-chat-backup-confirm" data-confirm hidden><p data-confirm-text></p><div><button type="button" data-cancel>取消</button><button type="button" data-accept>确认删除</button></div></div>
             <footer><span data-count>已选 0 个</span><button type="button" data-remove disabled>删除所选备份</button></footer>
@@ -1587,13 +1589,26 @@
         (root.documentElement || root.body).appendChild(dialog);
         const q = key => dialog.querySelector('[data-' + key + ']');
         let files = [], busy = false, scanSeq = 0;
-        const picks = new Set(), cache = new Map();
+        const picks = new Set(), cache = new Map(), pending = new Map(), searchErrors = new Map();
+        let searchTimer = null, searchSeq = 0, searching = false;
+        const keyword = () => q('search').value.trim().toLocaleLowerCase();
         const visibleFiles = () => {
-            const text = q('search').value.trim().toLocaleLowerCase();
-            return !text ? files : files.filter(item => [item.name,
-                item.time ? new Date(item.time).toLocaleString() : '日期未知',
-                item.time ? new Date(item.time).getFullYear() + '-' + String(new Date(item.time).getMonth() + 1).padStart(2, '0') + '-' + String(new Date(item.time).getDate()).padStart(2, '0') : '']
-                .join(' ').toLocaleLowerCase().includes(text));
+            const text = keyword();
+            return !text ? files : files.filter(item => cache.get(item.name)?.searchText.includes(text));
+        };
+        const readMessage = async item => {
+            if (cache.has(item.name)) return cache.get(item.name);
+            if (pending.has(item.name)) return pending.get(item.name);
+            const generation = scanSeq;
+            const task = (async () => {
+                const response = await mmBackupFetch('/api/backups/chat/download', { name: item.name });
+                const message = mmBackupLastMessage(await response.text());
+                if (alive() && generation === scanSeq) cache.set(item.name, message);
+                return message;
+            })();
+            pending.set(item.name, task);
+            try { return await task; }
+            finally { if (pending.get(item.name) === task) pending.delete(item.name); }
         };
         const alive = () => dialog.isConnected && dialog.open;
         const status = text => { if (alive()) q('status').textContent = text; };
@@ -1606,7 +1621,8 @@
             const visible = visibleFiles();
             q('all').checked = visible.length > 0 && visible.every(x => picks.has(x.name));
             q('all').indeterminate = visible.some(x => picks.has(x.name)) && !q('all').checked;
-            q('remove').disabled = busy || !picks.size; q('confirm').hidden = true;
+            q('remove').disabled = busy || searching || !picks.size;
+            q('all').disabled = busy || searching; q('confirm').hidden = true;
         };
         const setBusy = value => {
             busy = value;
@@ -1615,7 +1631,7 @@
         };
         const render = () => {
             const list = q('list'); list.replaceChildren();
-            if (!visibleFiles().length) list.append(el('p', '', files.length ? '没有匹配的聊天备份。' : '没有聊天备份。'));
+            if (!visibleFiles().length) list.append(el('p', '', searching ? '正在搜索聊天内容…' : (files.length ? '没有匹配的聊天备份。' : '没有聊天备份。')));
             for (const item of visibleFiles()) {
                 const row = el('article', 'awm-chat-backup-row'), line = el('div', 'awm-chat-backup-line');
                 const check = el('input'); check.type = 'checkbox'; check.checked = picks.has(item.name);
@@ -1635,11 +1651,7 @@
                     reading = true; toggle.disabled = true; detail.textContent = '…';
                     mmLog('backupPreview', 'chat', 'clicked');
                     try {
-                        let message = cache.get(item.name);
-                        if (!message) {
-                            const response = await mmBackupFetch('/api/backups/chat/download', { name: item.name });
-                            message = mmBackupLastMessage(await response.text()); cache.set(item.name, message);
-                        }
+                        const message = await readMessage(item);
                         if (!alive() || !row.isConnected) return;
                         detail.replaceChildren();
                         detail.append(el('small', '', '共 ' + message.count + ' 条消息 · ' + (message.emptyLast ? '最后一条为空，显示上一条有正文的消息' : '最后一条消息')));
@@ -1655,20 +1667,50 @@
             }
             update();
         };
+        const searchContents = async () => {
+            const seq = ++searchSeq, text = keyword();
+            searching = !!text; searchErrors.clear(); render();
+            if (!text) { status('共 ' + files.length + ' 个聊天备份。点击一行展开消息；删除仅影响备份副本。'); return; }
+            const targets = files.slice(); let cursor = 0, completed = 0;
+            const current = () => alive() && seq === searchSeq;
+            const report = () => {
+                if (!current()) return;
+                status('搜索聊天内容：已读取 ' + completed + ' / ' + targets.length + ' 个备份 · 匹配 ' + visibleFiles().length + ' 个' + (searchErrors.size ? ' · 读取失败 ' + searchErrors.size + ' 个' : ''));
+            };
+            report();
+            const worker = async () => {
+                while (current() && cursor < targets.length) {
+                    const item = targets[cursor++];
+                    try { await readMessage(item); }
+                    catch (error) { if (current()) searchErrors.set(item.name, error.message); }
+                    if (!current()) return;
+                    completed++; report();
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(3, targets.length) }, worker));
+            if (!current()) return;
+            searching = false; render();
+            status('搜索完成 · 匹配 ' + visibleFiles().length + ' / ' + targets.length + ' 个聊天备份' + (searchErrors.size ? '；' + searchErrors.size + ' 个读取失败，结果不完整，点击重新扫描可重试。' : '。'));
+            mmLog('backupSearch', 'chat', searchErrors.size ? 'partial' : 'completed', '', undefined, { total: targets.length, matched: visibleFiles().length, failed: searchErrors.size });
+        };
         const scan = async () => {
             if (busy) return;
-            const seq = ++scanSeq; setBusy(true); status('扫描中…');
+            const seq = ++scanSeq; ++searchSeq; hostWindow.clearTimeout(searchTimer); searching = false; setBusy(true); status('扫描中…');
             try {
                 const next = await mmBackupList();
                 if (!alive() || seq !== scanSeq) return;
-                files = next; picks.clear(); cache.clear(); render();
+                files = next; picks.clear(); cache.clear(); pending.clear(); searchErrors.clear(); render();
                 status('共 ' + files.length + ' 个聊天备份。点击一行展开消息；删除仅影响备份副本。');
                 mmLog('backupBrowser', 'chat', 'listed', '', undefined, { count: files.length });
             } catch (error) { status('扫描失败：' + error.message); mmLog('backupBrowser', 'chat', 'failed', error); }
-            finally { if (alive() && seq === scanSeq) setBusy(false); }
+            finally { if (alive() && seq === scanSeq) { setBusy(false); if (keyword()) await searchContents(); } }
         };
         q('refresh').onclick = scan;
-        q('search').oninput = render;
+        q('search').oninput = () => {
+            ++searchSeq; hostWindow.clearTimeout(searchTimer); searching = !!keyword(); render();
+            status(searching ? '正在搜索聊天内容…' : '共 ' + files.length + ' 个聊天备份。');
+            searchTimer = hostWindow.setTimeout(searchContents, 250);
+        };
         q('all').onchange = () => { const checked = q('all').checked; visibleFiles().forEach(x => checked ? picks.add(x.name) : picks.delete(x.name)); render(); };
         q('remove').onclick = () => {
             q('confirm-text').textContent = '删除所选的 ' + picks.size + ' 个聊天备份？原始聊天记录保留。'; q('confirm').hidden = false;
@@ -1697,7 +1739,7 @@
         const close = () => { if (!busy) dialog.close(); };
         q('close').onclick = close;
         dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
-        dialog.addEventListener('close', () => { scanSeq++; cache.clear(); picks.clear(); dialog.remove(); }, { once: true });
+        dialog.addEventListener('close', () => { scanSeq++; searchSeq++; hostWindow.clearTimeout(searchTimer); cache.clear(); pending.clear(); searchErrors.clear(); picks.clear(); dialog.remove(); }, { once: true });
         dialog.showModal(); await scan();
     }
 
@@ -2223,7 +2265,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '8.2', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '8.3', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3828,18 +3870,18 @@
             for(const candidate of urls){
                 try {
                     const url = new URL(candidate, hostWindow.location.href);
-                    url.searchParams.set('awm-version', '8.2');
+                    url.searchParams.set('awm-version', '8.3');
                     const result = await hostWindow.fetch(url.href, { credentials: 'same-origin', cache: 'no-store' });
                     if (!result.ok) continue;
                     const text = await result.text();
-                    if (!text.includes('data-awm-version="8.2"')) continue;
+                    if (!text.includes('data-awm-version="8.3"')) continue;
                     html = text; selectedUrl = url.pathname; break;
                 } catch (_) {}
             }
-            if(!html)throw new Error('没有找到 V8.2 的 settings.html，请确认扩展文件已完整更新');
+            if(!html)throw new Error('没有找到 V8.3 的 settings.html，请确认扩展文件已完整更新');
             const wrapper=root.createElement('div');wrapper.id=MM_EXTENSION_SETTINGS_ID;
             wrapper.innerHTML=html;
-            mmLog('extensionSettings', 'settings', 'loaded', '', undefined, { version: '8.2', path: selectedUrl });
+            mmLog('extensionSettings', 'settings', 'loaded', '', undefined, { version: '8.3', path: selectedUrl });
             if(root.getElementById(MM_EXTENSION_SETTINGS_ID))return;
             target.appendChild(wrapper);
             bindExtensionSettings(wrapper);
@@ -3856,7 +3898,7 @@
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V8.2 loaded');
+        console.log('[鲜虾鱼板面] V8.3 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
