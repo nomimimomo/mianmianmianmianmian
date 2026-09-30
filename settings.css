@@ -26,3 +26,15 @@
   #awm-extension-settings .awm-extension-actions button.menu_button{flex:1 1 auto}
   #awm-extension-settings .awm-size-line>span{min-width:0;white-space:normal}
 }
+
+/* V7.7: compact backup-cleaner controls in the extension drawer. */
+#awm-extension-settings .awm-backup-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+#awm-extension-settings .awm-backup-field{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;align-items:center}
+#awm-extension-settings .awm-backup-field select{width:100%;min-width:0}
+#awm-extension-settings .awm-backup-extra{display:flex;gap:8px;margin-top:8px;margin-left:72px}
+#awm-extension-settings .awm-backup-extra[hidden]{display:none!important}
+#awm-extension-settings .awm-backup-extra select,#awm-extension-settings .awm-backup-extra input{min-width:0;width:100%;flex:1;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:5px;font:inherit}
+#awm-extension-settings .awm-backup-help,#awm-extension-settings .awm-backup-status{font-size:.85em;line-height:1.5;opacity:.8;margin:8px 0 0;overflow-wrap:anywhere}
+#awm-extension-settings .awm-backup-actions{justify-content:flex-end}
+#awm-extension-settings #awmBackupSection button:disabled{opacity:.6;cursor:wait}
+@media(max-width:650px){#awm-extension-settings .awm-backup-fields{grid-template-columns:minmax(0,1fr)}}

@@ -1339,7 +1339,199 @@
         </section>`;
         awmLayoutBindSettings(main);
     }
+    // BEGIN V7.7 backup cleaner: chat backups only.
+    const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
+    let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
+    function mmBackupSettings() {
+        return Object.assign({}, MM_BACKUP_DEFAULT, load().settings?.backupCleaner || {});
+    }
+    function mmBackupPersist(changes) {
+        const data = clone(load());
+        data.settings.backupCleaner = Object.assign(mmBackupSettings(), changes);
+        save(data);
+    }
+    function mmBackupCutoff(retention, now = Date.now()) {
+        if (retention === 'off') return null;
+        const days = { '1d': 1, '7d': 7, '30d': 30 };
+        if (days[retention]) return now - days[retention] * 86400000;
+        const date = new Date(now);
+        if (retention === '1y') date.setFullYear(date.getFullYear() - 1);
+        else if (retention === '3m' || retention === '6m') date.setMonth(date.getMonth() - Number(retention[0]));
+        else return null;
+        return date.getTime();
+    }
+    function mmBackupTime(item) {
+        const match = String(item.file_name || '').match(/_(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:\D|$)/);
+        if (match) {
+            const date = new Date(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]);
+            if (date.getFullYear() === +match[1] && date.getMonth() === +match[2] - 1 && date.getDate() === +match[3] && date.getHours() === +match[4] && date.getMinutes() === +match[5] && date.getSeconds() === +match[6]) return date.getTime();
+        }
+        for (const key of ['date', 'time', 'timestamp', 'created_at', 'mtime', 'modified_at']) {
+            if (!item[key]) continue;
+            const time = new Date(item[key]).getTime();
+            if (Number.isFinite(time)) return time;
+        }
+        return 0;
+    }
+    function mmBackupSize(item) {
+        const value = item.file_size;
+        if (value == null || value === '') return 0;
+        if (Number.isFinite(+value) && +value >= 0) return +value;
+        const match = String(value).match(/^\s*([\d.]+)\s*(B|KB|MB|GB|TB)?\s*$/i);
+        return match ? (+match[1] || 0) * ({ B: 1, KB: 1024, MB: 1048576, GB: 1073741824, TB: 1099511627776 }[(match[2] || 'B').toUpperCase()]) : 0;
+    }
+    function mmBackupFormat(bytes) {
+        let i = 0; const units = ['B', 'KB', 'MB', 'GB'];
+        while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+        return (i ? bytes.toFixed(1) : Math.round(bytes)) + ' ' + units[i];
+    }
+    async function mmBackupFetch(path, body) {
+        const st = hostWindow.SillyTavern, context = st?.getContext?.();
+        const provider = st?.getRequestHeaders || context?.getRequestHeaders || hostWindow.getRequestHeaders;
+        if (typeof provider !== 'function') throw new Error('酒馆请求接口不可用');
+        const headers = provider.call(st);
+        const controller = new AbortController();
+        const timer = hostWindow.setTimeout(() => controller.abort(), 20000);
+        try {
+            const candidates = [hostWindow.fetch, globalThis.fetch];
+            const original = candidates.find(fn => typeof fn?.__baiBaiToolkitOriginalFetch === 'function');
+            const request = original?.__baiBaiToolkitOriginalFetch || hostWindow.fetch;
+            const response = await request.call(hostWindow, path, { method: 'POST', credentials: 'same-origin', headers, cache: 'no-cache', signal: controller.signal, ...(body ? { body: JSON.stringify(body) } : {}) });
+            if (!response.ok) throw new Error('备份接口 HTTP ' + response.status);
+            return response;
+        } catch (error) {
+            if (controller.signal.aborted) throw new Error('备份请求超时，请重新扫描核对结果');
+            throw error;
+        } finally { hostWindow.clearTimeout(timer); }
+    }
+    async function mmBackupScan(retention) {
+        const cutoff = mmBackupCutoff(retention);
+        if (cutoff === null) return { files: [], bytes: 0, total: 0, skipped: 0 };
+        const list = await (await mmBackupFetch('/api/backups/chat/get')).json();
+        if (!Array.isArray(list)) throw new Error('备份列表格式异常');
+        const result = { files: [], bytes: 0, total: 0, skipped: 0 };
+        for (const item of list) {
+            // Never pass settings backups, paths or arbitrary file names to deletion.
+            const name = String(item?.file_name || '');
+            if (!/^chat_[^/\\]+\.jsonl$/i.test(name) || name.includes('..')) continue;
+            result.total++;
+            const time = mmBackupTime(item);
+            if (!time) { result.skipped++; continue; }
+            if (time < cutoff) { const size = mmBackupSize(item); result.files.push({ name, size }); result.bytes += size; }
+        }
+        return result;
+    }
+    function mmBackupStatus(message) {
+        const node = root.getElementById('awmBackupStatus');
+        if (node) node.textContent = message;
+    }
+    function mmBackupSetBusy(busy, action) {
+        const area = root.getElementById('awmBackupSection');
+        if (!area) return;
+        area.setAttribute('aria-busy', String(busy));
+        area.querySelectorAll('button,input,select').forEach(node => { node.disabled = busy; });
+        const scan = area.querySelector('#awmBackupScan'), clean = area.querySelector('#awmBackupClean');
+        if (scan) scan.textContent = busy && action === 'scan' ? '…' : '预览过期备份';
+        if (clean) clean.textContent = busy && action === 'clean' ? '…' : '立即清理';
+    }
+    async function mmBackupRun(action = 'clean', automatic = false) {
+        if (mmBackupBusy || mmBackupStopped) return;
+        const settings = mmBackupSettings();
+        if (mmBackupCutoff(settings.retention) === null) { if (!automatic) mmBackupStatus('请先选择保留时间，当前未开启清理'); return; }
+        mmBackupBusy = true;
+        mmBackupSetBusy(true, action);
+        mmBackupStatus(action === 'scan' ? '扫描中…' : '清理中…');
+        mmLog('backupCleaner', action, automatic ? 'automatic-start' : 'clicked');
+        try {
+            const scan = await mmBackupScan(settings.retention);
+            if (mmBackupStopped) return;
+            if (action === 'scan') {
+                mmBackupStatus('共 ' + scan.total + ' 个聊天备份，过期 ' + scan.files.length + ' 个，约 ' + mmBackupFormat(scan.bytes) + (scan.skipped ? '；跳过 ' + scan.skipped + ' 个时间不明的备份' : ''));
+                mmLog('backupCleaner', 'scan', 'completed', '', undefined, { total: scan.total, expired: scan.files.length, bytes: scan.bytes, skipped: scan.skipped });
+                return;
+            }
+            if (!scan.files.length) { mmBackupStatus('没有需要清理的聊天备份'); return; }
+            if (!automatic && !hostWindow.confirm('将删除 ' + scan.files.length + ' 个过期聊天备份，释放约 ' + mmBackupFormat(scan.bytes) + '。原始聊天记录不会删除。继续吗？')) { mmBackupStatus('已取消清理'); return; }
+            let index = 0, deleted = 0, freed = 0, failed = 0;
+            const worker = async () => {
+                while (index < scan.files.length && !mmBackupStopped) {
+                    const item = scan.files[index++];
+                    try { await mmBackupFetch('/api/backups/chat/delete', { name: item.name }); deleted++; freed += item.size; }
+                    catch (_) { failed++; }
+                    mmBackupStatus('已处理 ' + (deleted + failed) + ' / ' + scan.files.length + ' 个备份…');
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(4, scan.files.length) }, worker));
+            if (mmBackupStopped) return;
+            const result = '已清理 ' + deleted + ' 个聊天备份，释放约 ' + mmBackupFormat(freed) + (failed ? '；失败 ' + failed + ' 个，可重新扫描' : '');
+            mmBackupStatus(result);
+            mmLog('backupCleaner', 'clean', failed ? 'partial' : 'completed', '', undefined, { deleted, freed, failed });
+            try { mmBackupPersist({ lastRun: Date.now() }); }
+            catch (error) { mmBackupStatus(result + '；清理时间保存失败：' + error.message); }
+            if (automatic) toast(result, failed ? 'warning' : 'success');
+        } catch (error) {
+            mmBackupStatus('备份' + (action === 'scan' ? '扫描' : '清理') + '失败：' + error.message);
+            mmLog('backupCleaner', action, 'failed', error.message);
+            if (automatic) toast('备份清理失败：' + error.message, 'error');
+        } finally {
+            mmBackupBusy = false;
+            if (!mmBackupStopped) mmBackupSetBusy(false);
+        }
+    }
+    function mmBackupSchedule(startup = false) {
+        hostWindow.clearTimeout(mmBackupTimer);
+        if (mmBackupStopped) return;
+        const settings = mmBackupSettings();
+        if (mmBackupCutoff(settings.retention) === null) return;
+        if (settings.schedule === 'startup') {
+            if (startup) mmBackupTimer = hostWindow.setTimeout(() => mmBackupRun('clean', true), 2500);
+            return;
+        }
+        if (!['daily', 'weekly'].includes(settings.schedule)) return;
+        const value = settings.schedule === 'weekly' ? settings.weeklyTime : settings.dailyTime;
+        const [hour, minute] = (/^\d{2}:\d{2}$/.test(value) ? value : '04:00').split(':').map(Number);
+        const now = new Date(), next = new Date(now);
+        next.setHours(hour, minute, 0, 0);
+        if (settings.schedule === 'weekly') {
+            const day = Math.max(0, Math.min(6, Number(settings.weeklyDay) || 0));
+            next.setDate(next.getDate() + (day - now.getDay() + 7) % 7);
+            if (next <= now) next.setDate(next.getDate() + 7);
+        } else if (next <= now) next.setDate(next.getDate() + 1);
+        mmBackupTimer = hostWindow.setTimeout(async () => { await mmBackupRun('clean', true); mmBackupSchedule(); }, Math.max(1000, next.getTime() - Date.now()));
+    }
+    function mmBackupBind(main) {
+        const section = main.querySelector('#awmBackupSection');
+        if (!section) return;
+        const q = id => section.querySelector('#' + id), settings = mmBackupSettings();
+        q('awmBackupRetention').value = settings.retention;
+        q('awmBackupSchedule').value = settings.schedule;
+        q('awmBackupDailyTime').value = settings.dailyTime;
+        q('awmBackupWeeklyDay').value = settings.weeklyDay;
+        q('awmBackupWeeklyTime').value = settings.weeklyTime;
+        const sync = () => {
+            const mode = q('awmBackupSchedule').value;
+            q('awmBackupDaily').hidden = mode !== 'daily';
+            q('awmBackupWeekly').hidden = mode !== 'weekly';
+        };
+        ['awmBackupRetention', 'awmBackupSchedule', 'awmBackupDailyTime', 'awmBackupWeeklyDay', 'awmBackupWeeklyTime'].forEach(id => {
+            q(id).onchange = () => {
+                try {
+                    mmBackupPersist({ retention: q('awmBackupRetention').value, schedule: q('awmBackupSchedule').value, dailyTime: q('awmBackupDailyTime').value || '04:00', weeklyDay: q('awmBackupWeeklyDay').value, weeklyTime: q('awmBackupWeeklyTime').value || '04:00' });
+                    sync(); mmBackupSchedule();
+                    mmBackupStatus(q('awmBackupRetention').value === 'off' ? '自动清理未开启' : '设置已保存');
+                } catch (error) { mmBackupStatus('设置保存失败：' + error.message); }
+            };
+        });
+        q('awmBackupScan').onclick = () => mmBackupRun('scan');
+        q('awmBackupClean').onclick = () => mmBackupRun('clean');
+        sync(); mmBackupSetBusy(mmBackupBusy);
+        mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
+    }
+    hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); });
+    // END V7.7 backup cleaner.
+
     function bindExtensionSettings(main) {
+        mmBackupBind(main);
         main.querySelector('#awmStorageMode').value=mmStorageMode();
         const launcherToggle=main.querySelector('#awmLauncherVisible');
         launcherToggle.checked=mmLauncherVisible();
@@ -1825,7 +2017,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '7.6', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '7.7', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3445,7 +3637,8 @@
         mmCreateLauncher();
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
-        console.log('[鲜虾鱼板面] V7.6 loaded');
+        mmBackupSchedule(true);
+        console.log('[鲜虾鱼板面] V7.7 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
