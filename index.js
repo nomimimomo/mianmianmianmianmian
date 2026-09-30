@@ -1343,40 +1343,42 @@
     const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
-    // 清理偏好单独即时保存，避免整个编辑数据的延迟写回使刷新后恢复旧选项。
-    const MM_BACKUP_PREF_KEY = ID + '_backup_preferences_v1';
-    function mmBackupPreferenceStore() {
-        const account = hostWindow.SillyTavern?.getContext?.()?.accountStorage;
-        return account && typeof account.getItem === 'function' && typeof account.setItem === 'function'
-            ? account : hostWindow.localStorage;
-    }
     function mmBackupSettings() {
-        const base = Object.assign({}, MM_BACKUP_DEFAULT, load().settings?.backupCleaner || {});
-        try {
-            const raw = mmBackupPreferenceStore().getItem(MM_BACKUP_PREF_KEY);
-            const prefs = raw ? JSON.parse(raw) : null;
-            if (prefs && typeof prefs === 'object' && !Array.isArray(prefs)) {
-                if (['off','1d','7d','30d','3m','6m','1y'].includes(prefs.retention)) base.retention = prefs.retention;
-                if (['startup','daily','weekly'].includes(prefs.schedule)) base.schedule = prefs.schedule;
-                for (const key of ['dailyTime','weeklyTime']) {
-                    if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(prefs[key] || '')) base[key] = prefs[key];
-                }
-                if (/^[0-6]$/.test(String(prefs.weeklyDay ?? ''))) base.weeklyDay = String(prefs.weeklyDay);
-                if (Number.isFinite(prefs.lastRun) && prefs.lastRun >= 0) base.lastRun = prefs.lastRun;
-            }
-        } catch (error) { console.warn('[鲜虾鱼板面] 清理偏好读取失败，使用原有设置', error); }
-        return base;
+        return Object.assign({}, MM_BACKUP_DEFAULT, load().settings?.backupCleaner || {});
     }
+    let mmBackupPreferenceQueue = Promise.resolve();
     function mmBackupPersist(changes) {
-        const prefs = Object.assign(mmBackupSettings(), changes);
-        const store = mmBackupPreferenceStore(), encoded = JSON.stringify(prefs);
-        store.setItem(MM_BACKUP_PREF_KEY, encoded);
-        if (store.getItem(MM_BACKUP_PREF_KEY) !== encoded) throw new Error('清理设置未保存，请重新选择');
-        // 原数据中仍留一份，供导出及旧版本兼容；以即时偏好作为刷新后的读取来源。
+        const pending = mmBackupPreferenceQueue.then(() => mmBackupCommitPreferences(changes));
+        mmBackupPreferenceQueue = pending.catch(() => {});
+        return pending;
+    }
+    async function mmBackupCommitPreferences(changes) {
         const data = clone(load());
-        data.settings.backupCleaner = prefs;
-        try { save(data); }
-        catch (error) { console.warn('[鲜虾鱼板面] 清理偏好已保存，主数据同步失败', error); }
+        data.settings.backupCleaner = Object.assign(mmBackupSettings(), changes);
+        const value = mmNormalize(data), previous = runtimeData;
+        // 使用与鱼板面相同的数据容器及存储选择；等待助手写入并通知酒馆保存。
+        runtimeData = value;
+        try {
+            if (mmStorageMode() === 'browser') {
+                hostWindow.localStorage.setItem(MM_LOCAL_KEY, JSON.stringify(value));
+            } else {
+                if (!canUseTavernStorage()) throw new Error('酒馆持久化接口不可用，设置未保存');
+                const ctx = hostWindow.SillyTavern?.getContext?.();
+                const assign = mmHelperFn('insertOrAssignVariables');
+                if (assign) await assign({ [TAVERN_DATA_KEY]: clone(value) }, { type: 'global' });
+                else ctx.accountStorage.setItem(TAVERN_DATA_KEY, JSON.stringify(value));
+                if (typeof ctx?.saveSettings === 'function') await ctx.saveSettings();
+                else if (typeof ctx?.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
+            }
+            tavernDataReady = true;
+            const prefs = value.settings.backupCleaner;
+            mmLog('backupPreferences', 'settings', 'saved', '', undefined,
+                { retention: prefs.retention, schedule: prefs.schedule, storage: mmStorageMode() });
+        } catch (error) {
+            if (runtimeData === value) runtimeData = previous;
+            mmLog('backupPreferences', 'settings', 'failed', error);
+            throw error;
+        }
     }
     function mmBackupCutoff(retention, now = Date.now()) {
         if (retention === 'off') return null;
@@ -1516,7 +1518,7 @@
             const result = '已清理 ' + deleted + ' 个聊天备份，释放约 ' + mmBackupFormat(freed) + (failed ? '；失败 ' + failed + ' 个，可重新扫描' : '');
             mmBackupStatus(result);
             mmLog('backupCleaner', 'clean', failed ? 'partial' : 'completed', '', undefined, { deleted, freed, failed });
-            try { mmBackupPersist({ lastRun: Date.now() }); }
+            try { await mmBackupPersist({ lastRun: Date.now() }); }
             catch (error) { mmBackupStatus(result + '；清理时间保存失败：' + error.message); }
             if (automatic) toast(result, failed ? 'warning' : 'success');
         } catch (error) {
@@ -1549,10 +1551,160 @@
         } else if (next <= now) next.setDate(next.getDate() + 1);
         mmBackupTimer = hostWindow.setTimeout(async () => { await mmBackupRun('clean', true); mmBackupSchedule(); }, Math.max(1000, next.getTime() - Date.now()));
     }
+    // 独立聊天备份弹窗；正文仅存在当前弹窗内，不写入鱼板面数据。
+    function mmBackupValidName(name) {
+        return /^chat_[^/\\]+\.jsonl$/i.test(name) && !name.includes('..');
+    }
+    async function mmBackupList() {
+        const list = await (await mmBackupFetch('/api/backups/chat/get')).json();
+        if (!Array.isArray(list)) throw new Error('备份列表格式异常');
+        return list.filter(item => mmBackupValidName(String(item?.file_name || '')))
+            .map(item => ({ name: String(item.file_name), time: mmBackupTime(item), size: mmBackupSize(item) }))
+            .sort((a, b) => b.time - a.time || b.name.localeCompare(a.name));
+    }
+    function mmBackupLastMessage(text) {
+        let last = null, nonempty = null, count = 0;
+        for (const line of String(text).replace(/^\uFEFF/, '').split(/\r?\n/)) {
+            if (!line.trim()) continue;
+            let item;
+            try { item = JSON.parse(line); } catch (_) { throw new Error('备份包含损坏的消息，无法完整读取'); }
+            if (item && typeof item === 'object' && typeof item.mes === 'string') {
+                last = item; count++;
+                if (item.mes.trim()) nonempty = item;
+            }
+        }
+        if (!last) return { name: '', text: '此备份没有聊天消息。', date: '', count: 0, emptyLast: false };
+        const shown = last.mes.trim() ? last : nonempty;
+        return { name: String(shown?.name || ''), text: shown?.mes || '最后一条消息为空。',
+            date: String(shown?.send_date || ''), count, emptyLast: !last.mes.trim() };
+    }
+    async function mmBackupOpen() {
+        const existing = root.getElementById('awmChatBackupDialog');
+        if (existing) { if (!existing.open) existing.showModal(); return; }
+        const dialog = root.createElement('dialog');
+        dialog.id = 'awmChatBackupDialog'; dialog.className = 'awm-chat-backup-dialog';
+        dialog.setAttribute('aria-labelledby', 'awmChatBackupDialogTitle');
+        dialog.innerHTML = `<div class="awm-chat-backup-shell">
+            <header><h3 id="awmChatBackupDialogTitle">聊天备份</h3><button type="button" data-close aria-label="关闭">×</button></header>
+            <div class="awm-chat-backup-tools"><label><input type="checkbox" data-all> 全选</label><button type="button" data-refresh>重新扫描</button></div>
+            <div class="awm-chat-backup-list" data-list></div>
+            <div class="awm-chat-backup-confirm" data-confirm hidden><p data-confirm-text></p><div><button type="button" data-cancel>取消</button><button type="button" data-accept>确认删除</button></div></div>
+            <footer><span data-count>已选 0 个</span><button type="button" data-remove disabled>删除所选备份</button></footer>
+            <p class="awm-chat-backup-status" data-status role="status" aria-live="polite">扫描中…</p>
+        </div>`;
+        (root.documentElement || root.body).appendChild(dialog);
+        const q = key => dialog.querySelector('[data-' + key + ']');
+        let files = [], busy = false, scanSeq = 0;
+        const picks = new Set(), cache = new Map();
+        const alive = () => dialog.isConnected && dialog.open;
+        const status = text => { if (alive()) q('status').textContent = text; };
+        const el = (tag, className, text) => {
+            const node = root.createElement(tag); if (className) node.className = className;
+            if (text !== undefined) node.textContent = text; return node;
+        };
+        const update = () => {
+            q('count').textContent = '已选 ' + picks.size + ' 个 · 约 ' + mmBackupFormat(files.filter(x => picks.has(x.name)).reduce((a, x) => a + x.size, 0));
+            q('all').checked = files.length > 0 && picks.size === files.length;
+            q('all').indeterminate = picks.size > 0 && picks.size < files.length;
+            q('remove').disabled = busy || !picks.size; q('confirm').hidden = true;
+        };
+        const setBusy = value => {
+            busy = value;
+            dialog.querySelectorAll('button,input').forEach(node => { node.disabled = value; });
+            if (!value) update();
+        };
+        const render = () => {
+            const list = q('list'); list.replaceChildren();
+            if (!files.length) list.append(el('p', '', '没有聊天备份。'));
+            for (const item of files) {
+                const row = el('article', 'awm-chat-backup-row'), line = el('div', 'awm-chat-backup-line');
+                const check = el('input'); check.type = 'checkbox'; check.checked = picks.has(item.name);
+                check.setAttribute('aria-label', '选择 ' + item.name);
+                check.onchange = () => { check.checked ? picks.add(item.name) : picks.delete(item.name); update(); };
+                const toggle = el('button', 'awm-chat-backup-toggle'); toggle.type = 'button'; toggle.setAttribute('aria-expanded', 'false');
+                const title = el('span', 'awm-chat-backup-name', item.name);
+                const info = el('span', 'awm-chat-backup-info', (item.time ? new Date(item.time).toLocaleString() : '日期未知') + ' · 约 ' + mmBackupFormat(item.size));
+                const sign = el('span', 'awm-chat-backup-sign', '+'); sign.setAttribute('aria-hidden', 'true');
+                toggle.append(title, info, sign); line.append(check, toggle);
+                const detail = el('div', 'awm-chat-backup-detail'); detail.hidden = true;
+                let reading = false;
+                toggle.onclick = async () => {
+                    if (reading || busy) return;
+                    if (!detail.hidden) { detail.hidden = true; toggle.setAttribute('aria-expanded', 'false'); sign.textContent = '+'; return; }
+                    detail.hidden = false; toggle.setAttribute('aria-expanded', 'true'); sign.textContent = '−';
+                    reading = true; toggle.disabled = true; detail.textContent = '…';
+                    mmLog('backupPreview', 'chat', 'clicked');
+                    try {
+                        let message = cache.get(item.name);
+                        if (!message) {
+                            const response = await mmBackupFetch('/api/backups/chat/download', { name: item.name });
+                            message = mmBackupLastMessage(await response.text()); cache.set(item.name, message);
+                        }
+                        if (!alive() || !row.isConnected) return;
+                        detail.replaceChildren();
+                        detail.append(el('small', '', '共 ' + message.count + ' 条消息 · ' + (message.emptyLast ? '最后一条为空，显示上一条有正文的消息' : '最后一条消息')));
+                        detail.append(el('div', 'awm-chat-backup-speaker', message.name + (message.date ? ' · ' + message.date : '')));
+                        detail.append(el('p', '', message.text));
+                        mmLog('backupPreview', 'chat', 'completed', '', undefined, { messageCount: message.count, emptyLast: message.emptyLast });
+                    } catch (error) {
+                        if (alive() && row.isConnected) detail.textContent = '读取失败：' + error.message + '。收起后可重试。';
+                        mmLog('backupPreview', 'chat', 'failed', error);
+                    } finally { reading = false; if (alive() && row.isConnected) toggle.disabled = busy; }
+                };
+                row.append(line, detail); list.append(row);
+            }
+            update();
+        };
+        const scan = async () => {
+            if (busy) return;
+            const seq = ++scanSeq; setBusy(true); status('扫描中…');
+            try {
+                const next = await mmBackupList();
+                if (!alive() || seq !== scanSeq) return;
+                files = next; picks.clear(); cache.clear(); render();
+                status('共 ' + files.length + ' 个聊天备份。点击一行展开消息；删除仅影响备份副本。');
+                mmLog('backupBrowser', 'chat', 'listed', '', undefined, { count: files.length });
+            } catch (error) { status('扫描失败：' + error.message); mmLog('backupBrowser', 'chat', 'failed', error); }
+            finally { if (alive() && seq === scanSeq) setBusy(false); }
+        };
+        q('refresh').onclick = scan;
+        q('all').onchange = () => { picks.clear(); if (q('all').checked) files.forEach(x => picks.add(x.name)); render(); };
+        q('remove').onclick = () => {
+            q('confirm-text').textContent = '删除所选的 ' + picks.size + ' 个聊天备份？原始聊天记录保留。'; q('confirm').hidden = false;
+        };
+        q('cancel').onclick = () => { q('confirm').hidden = true; };
+        q('accept').onclick = async () => {
+            if (busy || !picks.size) return;
+            if (mmBackupBusy) { status('自动清理正在执行，请稍后重新扫描。'); return; }
+            const names = [...picks]; let deleted = 0, failed = 0;
+            mmBackupBusy = true; mmBackupSetBusy(true, 'clean'); setBusy(true); q('confirm').hidden = true;
+            q('accept').textContent = '…'; status('核对备份列表…');
+            mmLog('backupManualDelete', 'chat', 'clicked', '', undefined, { selected: names.length });
+            try {
+                const current = new Set((await mmBackupList()).map(x => x.name));
+                for (const name of names) {
+                    if (!current.has(name)) { files = files.filter(x => x.name !== name); picks.delete(name); continue; }
+                    try { await mmBackupFetch('/api/backups/chat/delete', { name }); deleted++; files = files.filter(x => x.name !== name); picks.delete(name); cache.delete(name); }
+                    catch (error) { failed++; mmLog('backupManualDelete', 'chat', 'file-failed', error); }
+                    status('已处理 ' + (deleted + failed) + ' / ' + names.length + ' 个…');
+                }
+                if (alive()) { render(); status('已删除 ' + deleted + ' 个备份' + (failed ? '；失败 ' + failed + ' 个，保留勾选以便重试。' : '。原始聊天记录保留。')); }
+                mmLog('backupManualDelete', 'chat', failed ? 'partial' : 'completed', '', undefined, { deleted, failed });
+            } catch (error) { status('删除失败：' + error.message); mmLog('backupManualDelete', 'chat', 'failed', error); }
+            finally { mmBackupBusy = false; mmBackupSetBusy(false); if (alive()) { q('accept').textContent = '确认删除'; setBusy(false); } }
+        };
+        const close = () => { if (!busy) dialog.close(); };
+        q('close').onclick = close;
+        dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
+        dialog.addEventListener('close', () => { scanSeq++; cache.clear(); picks.clear(); dialog.remove(); }, { once: true });
+        dialog.showModal(); await scan();
+    }
+
     function mmBackupBind(main) {
         const section = main.querySelector('#awmBackupSection');
         if (!section) return;
         const q = id => section.querySelector('#' + id), settings = mmBackupSettings();
+        mmLog('backupPreferences', 'settings', 'restored', '', undefined, { retention: settings.retention, schedule: settings.schedule });
         q('awmBackupRetention').value = settings.retention;
         q('awmBackupSchedule').value = settings.schedule;
         q('awmBackupDailyTime').value = settings.dailyTime;
@@ -1564,15 +1716,17 @@
             q('awmBackupWeekly').hidden = mode !== 'weekly';
         };
         ['awmBackupRetention', 'awmBackupSchedule', 'awmBackupDailyTime', 'awmBackupWeeklyDay', 'awmBackupWeeklyTime'].forEach(id => {
-            q(id).onchange = () => {
+            q(id).onchange = async () => {
                 try {
-                    mmBackupPersist({ retention: q('awmBackupRetention').value, schedule: q('awmBackupSchedule').value, dailyTime: q('awmBackupDailyTime').value || '04:00', weeklyDay: q('awmBackupWeeklyDay').value, weeklyTime: q('awmBackupWeeklyTime').value || '04:00' });
+                    mmBackupStatus('…');
+                    await mmBackupPersist({ retention: q('awmBackupRetention').value, schedule: q('awmBackupSchedule').value, dailyTime: q('awmBackupDailyTime').value || '04:00', weeklyDay: q('awmBackupWeeklyDay').value, weeklyTime: q('awmBackupWeeklyTime').value || '04:00' });
                     sync(); mmBackupSchedule();
                     mmBackupStatus(q('awmBackupRetention').value === 'off' ? '自动清理未开启' : '设置已保存');
-                } catch (error) { mmBackupStatus('设置保存失败：' + error.message); }
+                } catch (error) { mmBackupStatus('设置保存失败：' + error.message); mmLog('backupPreferences', 'settings', 'failed', error); }
             };
         });
-        q('awmBackupScan').onclick = () => mmBackupRun('scan');
+        q('awmBackupScan').onclick = mmBackupOpen;
+        q('awmBackupManual').onclick = mmBackupOpen;
         q('awmBackupClean').onclick = () => mmBackupRun('clean');
         sync(); mmBackupSetBusy(mmBackupBusy);
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
@@ -2067,7 +2221,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '7.9', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '8.1', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3688,7 +3842,7 @@
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V7.9 loaded');
+        console.log('[鲜虾鱼板面] V8.1 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
