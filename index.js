@@ -1342,13 +1342,41 @@
     // BEGIN V7.7 backup cleaner: chat backups only.
     const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
+    let mmBackupConfirmResolve = null;
+    // 清理偏好单独即时保存，避免整个编辑数据的延迟写回使刷新后恢复旧选项。
+    const MM_BACKUP_PREF_KEY = ID + '_backup_preferences_v1';
+    function mmBackupPreferenceStore() {
+        const account = hostWindow.SillyTavern?.getContext?.()?.accountStorage;
+        return account && typeof account.getItem === 'function' && typeof account.setItem === 'function'
+            ? account : hostWindow.localStorage;
+    }
     function mmBackupSettings() {
-        return Object.assign({}, MM_BACKUP_DEFAULT, load().settings?.backupCleaner || {});
+        const base = Object.assign({}, MM_BACKUP_DEFAULT, load().settings?.backupCleaner || {});
+        try {
+            const raw = mmBackupPreferenceStore().getItem(MM_BACKUP_PREF_KEY);
+            const prefs = raw ? JSON.parse(raw) : null;
+            if (prefs && typeof prefs === 'object' && !Array.isArray(prefs)) {
+                if (['off','1d','7d','30d','3m','6m','1y'].includes(prefs.retention)) base.retention = prefs.retention;
+                if (['startup','daily','weekly'].includes(prefs.schedule)) base.schedule = prefs.schedule;
+                for (const key of ['dailyTime','weeklyTime']) {
+                    if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(prefs[key] || '')) base[key] = prefs[key];
+                }
+                if (/^[0-6]$/.test(String(prefs.weeklyDay ?? ''))) base.weeklyDay = String(prefs.weeklyDay);
+                if (Number.isFinite(prefs.lastRun) && prefs.lastRun >= 0) base.lastRun = prefs.lastRun;
+            }
+        } catch (error) { console.warn('[鲜虾鱼板面] 清理偏好读取失败，使用原有设置', error); }
+        return base;
     }
     function mmBackupPersist(changes) {
+        const prefs = Object.assign(mmBackupSettings(), changes);
+        const store = mmBackupPreferenceStore(), encoded = JSON.stringify(prefs);
+        store.setItem(MM_BACKUP_PREF_KEY, encoded);
+        if (store.getItem(MM_BACKUP_PREF_KEY) !== encoded) throw new Error('清理设置未保存，请重新选择');
+        // 原数据中仍留一份，供导出及旧版本兼容；以即时偏好作为刷新后的读取来源。
         const data = clone(load());
-        data.settings.backupCleaner = Object.assign(mmBackupSettings(), changes);
-        save(data);
+        data.settings.backupCleaner = prefs;
+        try { save(data); }
+        catch (error) { console.warn('[鲜虾鱼板面] 清理偏好已保存，主数据同步失败', error); }
     }
     function mmBackupCutoff(retention, now = Date.now()) {
         if (retention === 'off') return null;
@@ -1429,10 +1457,31 @@
         const area = root.getElementById('awmBackupSection');
         if (!area) return;
         area.setAttribute('aria-busy', String(busy));
-        area.querySelectorAll('button,input,select').forEach(node => { node.disabled = busy; });
+        area.querySelectorAll('button:not([data-backup-confirm]),input,select').forEach(node => { node.disabled = busy; });
         const scan = area.querySelector('#awmBackupScan'), clean = area.querySelector('#awmBackupClean');
         if (scan) scan.textContent = busy && action === 'scan' ? '…' : '预览过期备份';
         if (clean) clean.textContent = busy && action === 'clean' ? '…' : '立即清理';
+    }
+    function mmBackupConfirm(scan) {
+        const box = root.getElementById('awmBackupConfirm');
+        const message = root.getElementById('awmBackupConfirmMessage');
+        const accept = root.getElementById('awmBackupConfirmAccept');
+        const cancel = root.getElementById('awmBackupConfirmCancel');
+        if (!box || !message || !accept || !cancel) throw new Error('清理确认区域未加载');
+        message.textContent = '将删除 ' + scan.files.length + ' 个过期聊天备份，释放约 ' + mmBackupFormat(scan.bytes) + '。原始聊天记录不会删除。';
+        box.hidden = false;
+        mmBackupStatus('请确认是否清理');
+        return new Promise(resolve => {
+            const finish = approved => {
+                box.hidden = true;
+                accept.onclick = cancel.onclick = null;
+                mmBackupConfirmResolve = null;
+                resolve(approved);
+            };
+            mmBackupConfirmResolve = finish;
+            accept.onclick = () => finish(true);
+            cancel.onclick = () => finish(false);
+        });
     }
     async function mmBackupRun(action = 'clean', automatic = false) {
         if (mmBackupBusy || mmBackupStopped) return;
@@ -1451,7 +1500,8 @@
                 return;
             }
             if (!scan.files.length) { mmBackupStatus('没有需要清理的聊天备份'); return; }
-            if (!automatic && !hostWindow.confirm('将删除 ' + scan.files.length + ' 个过期聊天备份，释放约 ' + mmBackupFormat(scan.bytes) + '。原始聊天记录不会删除。继续吗？')) { mmBackupStatus('已取消清理'); return; }
+            if (!automatic && !await mmBackupConfirm(scan)) { mmBackupStatus('已取消清理'); return; }
+            if (mmBackupStopped) return;
             let index = 0, deleted = 0, freed = 0, failed = 0;
             const worker = async () => {
                 while (index < scan.files.length && !mmBackupStopped) {
@@ -1527,7 +1577,7 @@
         sync(); mmBackupSetBusy(mmBackupBusy);
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
     }
-    hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); });
+    hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
     // END V7.7 backup cleaner.
 
     function bindExtensionSettings(main) {
@@ -2017,7 +2067,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '7.7', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '7.9', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3638,7 +3688,7 @@
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V7.7 loaded');
+        console.log('[鲜虾鱼板面] V7.9 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
