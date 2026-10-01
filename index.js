@@ -1198,18 +1198,18 @@
     // ============================================================
 
     function awmPrepareStyle(style) {
-        const notes=[];const text=String(style.content||'');let content='',cursor=0;
+        const text=String(style.content||'');let note=String(style.note||'').trim(),cursor=0;
         while(cursor<text.length){
-            const start=text.indexOf('{{',cursor);if(start<0){content+=text.slice(cursor);break;}
-            content+=text.slice(cursor,start);let depth=1,i=start+2;
+            const start=text.indexOf('{{',cursor);if(start<0)break;
+            let depth=1,i=start+2;
             while(i<text.length&&depth){if(text.slice(i,i+2)==='{{'){depth++;i+=2;}else if(text.slice(i,i+2)==='}}'){depth--;i+=2;}else i++;}
-            if(depth){content+=text.slice(start);break;}
+            if(depth)break;
             const inner=text.slice(start+2,i-2).trim();
-            if(/^(?:user|char)$/i.test(inner))content+=text.slice(start,i);
-            else notes.push(inner);
+            // Preserve the source body, and avoid appending the same extracted note on each save.
+            if(inner&&!/^(?:user|char)$/i.test(inner)&&!('\n\n'+note+'\n\n').includes('\n\n'+inner+'\n\n'))note=[note,inner].filter(Boolean).join('\n\n');
             cursor=i;
         }
-        return {...style,tags:mmParseTags(style.tags||[]),content:content.trim(),note:[String(style.note||'').trim(),...notes].filter(Boolean).join('\n\n')};
+        return {...style,tags:mmParseTags(style.tags||[]),content:text,note};
     }
     function awmStyleKey(name) {
         return String(name||'').normalize('NFKC').toLowerCase().replace(/\([^)]*\)|（[^）]*）|\[[^\]]*\]/g,'')
@@ -1345,7 +1345,7 @@
         </section>`;
         awmLayoutBindSettings(main);
     }
-    // BEGIN V8.8 isolated backup cleaner.
+    // BEGIN V8.9 isolated backup cleaner.
     const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
@@ -1404,7 +1404,7 @@
                 if(sequence!==mmBackupPrefsSequence)return;
                 const actual=mmBackupDecodePrefs(await mmBackupServerSettings());
                 if(actual&&Object.keys(MM_BACKUP_DEFAULT).every(key=>actual[key]===value[key]))break;
-                if(Date.now()>=end)throw Error('酒馆尚未确认保存，请重试；未改动文风数据');
+                if(Date.now()>=end)throw Error('酒馆尚未确认保存，请重试');
                 await new Promise(resolve=>hostWindow.setTimeout(resolve,pause));
                 pause=Math.min(4000,pause*2);
             }
@@ -1414,7 +1414,7 @@
         if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
     }
 
-    // V8.8: retired copies stay in place until the shared retention expires.
+    // V8.9: retired copies stay in place until the shared retention expires.
     const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
     function mmRetiredLocal(key) {
         try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
@@ -1638,22 +1638,24 @@
             if (!scan.files.length) { mmBackupStatus('没有需要清理的备份'); return; }
             if (!automatic && !await mmBackupConfirm(scan)) { mmBackupStatus('已取消清理'); return; }
             if (mmBackupStopped) return;
-            let index = 0, deleted = 0, freed = 0, failed = 0;
+            let index = 0, deleted = 0, expired = 0, empty = 0, freed = 0, failed = 0;
             const worker = async () => {
                 while (index < scan.files.length && !mmBackupStopped) {
                     const item = scan.files[index++];
-                    try { await mmBackupFetch('/api/backups/chat/delete', { name: item.name }); deleted++; freed += item.size; }
+                    try { await mmBackupFetch('/api/backups/chat/delete', { name: item.name }); deleted++; if(item.reason==='empty')empty++;else expired++; freed += item.size; }
                     catch (_) { failed++; }
                     mmBackupStatus('已处理 ' + (deleted + failed) + ' / ' + scan.files.length + ' 个备份…');
                 }
             };
             await Promise.all(Array.from({ length: Math.min(4, scan.files.length) }, worker));
             if (mmBackupStopped) return;
-            const result = '已清理 ' + deleted + ' 个备份，释放约 ' + mmBackupFormat(freed) + (failed ? '；失败 ' + failed + ' 个，可重新扫描' : '');
+            const age = { '1d':'1 天', '7d':'7 天', '30d':'30 天', '3m':'3 个月', '6m':'6 个月', '1y':'1 年' }[settings.retention];
+            const counts = [expired ? age+'前的多余备份 '+expired+' 个' : '', empty ? '无消息备份 '+empty+' 个' : ''].filter(Boolean).join('、');
+            const result = (automatic ? '自动清理掉 '+(counts||'备份 0 个') : '已清理 '+deleted+' 个备份') + '，释放 '+mmBackupFormat(freed)+' 空间' + (failed ? '；失败 '+failed+' 个，可重新扫描' : '');
             mmBackupStatus(result+(mmBackupNativeLimit?'；当前酒馆缺少设置备份删除接口，仅处理聊天备份':''));
-            mmLog('backupCleaner', 'clean', failed ? 'partial' : 'completed', '', undefined, { deleted, freed, failed });
+            mmLog('backupCleaner', 'clean', failed ? 'partial' : 'completed', '', undefined, { automatic, retention:settings.retention, deleted, expired, empty, freed, failed });
             try { await mmBackupPersist({ lastRun: Date.now() }); }
-            catch (error) { mmBackupStatus(result + '；清理时间保存失败：' + error.message); }
+            catch (error) { mmLog('backupPreferences','lastRun','failed',error.message); }
             if (automatic) toast(result, failed ? 'warning' : 'success');
         } catch (error) {
             mmBackupStatus('备份' + (action === 'scan' ? '扫描' : '清理') + '失败：' + error.message);
@@ -1946,7 +1948,7 @@
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V8.8 isolated backup cleaner.
+    // END V8.9 isolated backup cleaner.
 
     function bindExtensionSettings(main) {
         mmBackupBind(main);
@@ -2435,7 +2437,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '8.8', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '8.9', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4088,7 +4090,7 @@
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V8.8 loaded');
+        console.log('[鲜虾鱼板面] V8.9 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});

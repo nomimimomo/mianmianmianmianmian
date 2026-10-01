@@ -1,4 +1,4 @@
-# 鲜虾鱼板面 V8.8
+# 鲜虾鱼板面 V8.9
 
 将本包文件覆盖到原扩展目录并刷新酒馆，settings.html 和 settings.css 也一起替换。
 无需额外后端，也不需要 storage.js。
