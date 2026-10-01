@@ -1,7 +1,7 @@
 <div class="awm-extension-config extension_container">
   <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-      <b>鲜虾鱼板面 V8.5</b>
+      <b>鲜虾鱼板面 V8.6</b>
       <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content">
@@ -19,7 +19,7 @@
         </section>
 
         <section class="awm-extension-card" id="awmBackupSection" aria-labelledby="awmBackupTitle">
-          <h3 id="awmBackupTitle">备份清理</h3>
+          <div class="awm-backup-heading"><h3 id="awmBackupTitle">备份清理</h3><span id="awmBackupSaveStatus" role="status" aria-live="polite"></span></div>
           <div class="awm-backup-fields">
             <label class="awm-backup-field"><span>保留时间</span><select id="awmBackupRetention"><option value="off">不开启</option><option value="1d">1天</option><option value="7d">7天</option><option value="30d">30天</option><option value="3m">3个月</option><option value="6m">6个月</option><option value="1y">1年</option></select></label>
             <div><label class="awm-backup-field"><span>清理时间</span><select id="awmBackupSchedule"><option value="startup">每次加载酒馆页面后</option><option value="daily">每天</option><option value="weekly">每周</option></select></label>
@@ -27,8 +27,8 @@
               <div class="awm-backup-extra" id="awmBackupWeekly" hidden><select id="awmBackupWeeklyDay" aria-label="每周清理日期"><option value="0">周日</option><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option></select><input id="awmBackupWeeklyTime" type="time" aria-label="每周清理时刻" value="04:00"></div>
             </div>
           </div>
-          <p class="awm-backup-help">按保留期限清理聊天备份和酒馆设置备份；当前聊天、设置、文风及草稿不会删除。</p>
-          <div class="awm-extension-actions awm-backup-actions"><button class="menu_button" id="awmBackupManual" type="button">手动删除</button><button class="menu_button" id="awmBackupClean" type="button" hidden>立即清理</button></div>
+          <p class="awm-backup-help">按保留期限清理聊天备份和酒馆设置备份。</p>
+          <div class="awm-extension-actions awm-backup-actions"><button class="menu_button" id="awmBackupManual" type="button">手动删除</button></div>
           <div id="awmBackupConfirm" class="awm-backup-confirm" hidden>
             <p id="awmBackupConfirmMessage"></p>
             <div class="awm-extension-actions"><button class="menu_button" id="awmBackupConfirmCancel" data-backup-confirm type="button">取消</button><button class="menu_button" id="awmBackupConfirmAccept" data-backup-confirm type="button">确认清理</button></div>

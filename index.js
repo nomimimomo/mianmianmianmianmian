@@ -74,8 +74,8 @@
 
     function loadLocalData() {
         try {
-            const raw = hostWindow.localStorage.getItem(ID);
-            const legacyRaw = raw || hostWindow.localStorage.getItem('ame-style-management-v03');
+            const raw = mmRetiredLocal(ID) ? null : hostWindow.localStorage.getItem(ID);
+            const legacyRaw = raw || (mmRetiredLocal('ame-style-management-v03') ? null : hostWindow.localStorage.getItem('ame-style-management-v03'));
             return legacyRaw ? normalizeData(JSON.parse(legacyRaw)) : clone(DEFAULT);
         } catch (_) { return clone(DEFAULT); }
     }
@@ -181,7 +181,13 @@
 
     function saveUIState() {
         try {
-            hostWindow.localStorage.setItem(UI_STATE_KEY, JSON.stringify(styleUIState));
+            if(tavernDataReady&&Array.isArray(runtimeData?.styles)){
+                const ids=new Set(runtimeData.styles.map(item=>String(item.id))),authors=new Set(runtimeData.styles.map(item=>item.author||'未署名'));
+                for(const id of Object.keys(styleUIState.styles))if(!ids.has(id))delete styleUIState.styles[id];
+                for(const author of Object.keys(styleUIState.folders))if(!authors.has(author))delete styleUIState.folders[author];
+            }
+            const encoded=JSON.stringify(styleUIState);
+            if(hostWindow.localStorage.getItem(UI_STATE_KEY)!==encoded)hostWindow.localStorage.setItem(UI_STATE_KEY,encoded);
         } catch (_) {}
     }
 
@@ -1339,14 +1345,14 @@
         </section>`;
         awmLayoutBindSettings(main);
     }
-    // BEGIN V8.5 isolated backup cleaner.
+    // BEGIN V8.7 isolated backup cleaner.
     const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
 
     // This dedicated key never contains styles, C/U drafts or layout data.
     const MM_BACKUP_PREF_KEY='鲜虾鱼板面.backupCleaner.v1';
-    let mmBackupPrefs=null,mmBackupPrefsReading=null,mmBackupPrefsQueue=Promise.resolve();
+    let mmBackupPrefs=null,mmBackupPrefsReading=null,mmBackupPrefsQueue=Promise.resolve(),mmBackupPrefsSequence=0;
     async function mmBackupServerSettings(){
         const response=await mmSettingsFetch('/api/settings/get',{}),body=await response.json();
         const settings=typeof body.settings==='string'?JSON.parse(body.settings):body.settings;
@@ -1383,24 +1389,92 @@
         const next=mmBackupCheckPrefs({...mmBackupPrefs,...changes});
         // Keep lastRun and retention only; discard unrelated V8.4 preferences during migration.
         const value=Object.fromEntries(Object.keys(MM_BACKUP_DEFAULT).map(key=>[key,next[key]]));
-        mmBackupPrefs=value;
+        mmBackupPrefs=value;const sequence=++mmBackupPrefsSequence;
         const task=mmBackupPrefsQueue.catch(()=>{}).then(async()=>{
+            if(sequence!==mmBackupPrefsSequence)return;
             const ctx=hostWindow.SillyTavern?.getContext?.(),insert=mmHelperFn('insertOrAssignVariables');
             if(insert)await insert({[MM_BACKUP_PREF_KEY]:clone(value)},{type:'global'});
             else if(ctx?.accountStorage?.setItem)ctx.accountStorage.setItem(MM_BACKUP_PREF_KEY,JSON.stringify(value));
             else throw Error('酒馆设置保存接口尚未就绪，未保存');
-            ctx?.saveSettingsDebounced?.();
+            if(!insert)ctx?.saveSettingsDebounced?.();
+            if(typeof ctx?.saveSettingsDebounced?.flush==='function')await ctx.saveSettingsDebounced.flush();
             // Native saving may be debounced. Confirm the server copy, not the in-memory value.
-            const end=Date.now()+15000;
+            const end=Date.now()+15000;let pause=500;
             while(true){
+                if(sequence!==mmBackupPrefsSequence)return;
                 const actual=mmBackupDecodePrefs(await mmBackupServerSettings());
                 if(actual&&Object.keys(MM_BACKUP_DEFAULT).every(key=>actual[key]===value[key]))break;
                 if(Date.now()>=end)throw Error('酒馆尚未确认保存，请重试；未改动文风数据');
-                await new Promise(resolve=>hostWindow.setTimeout(resolve,400));
+                await new Promise(resolve=>hostWindow.setTimeout(resolve,pause));
+                pause=Math.min(4000,pause*2);
             }
             mmLog('backupPreferences','settings','committed','',undefined,{retention:value.retention});
         });
-        mmBackupPrefsQueue=task;return task;
+        mmBackupPrefsQueue=task;await task;
+        if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
+    }
+
+    // V8.7: retired copies stay in place until the shared retention expires.
+    const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
+    function mmRetiredLocal(key) {
+        try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
+        catch (_) { return false; }
+    }
+    async function mmRetiredCleanup(retention) {
+        const cutoff=mmBackupCutoff(retention);
+        if(cutoff===null || mmStorageMode()!=='tavern')return;
+        const ctx=hostWindow.SillyTavern?.getContext?.(), account=ctx?.accountStorage;
+        if(!account?.removeItem || !account?.setItem)throw Error('旧副本清理：账户存储尚未就绪');
+        const server=await mmBackupServerSettings();
+        const stored=mmHelperFn('getVariables')&&mmHelperFn('insertOrAssignVariables')
+            ? server.extension_settings?.variables?.global?.[TAVERN_DATA_KEY]
+            : JSON.parse(server.accountStorage?.[TAVERN_DATA_KEY]||'null');
+        // Never hydrate, migrate, or write current editor data from this task.
+        const currentMatches=()=>{const current=runtimeData||readTavernData();return current && JSON.stringify(mmNormalize(stored))===JSON.stringify(mmNormalize(current));};
+        if(!stored || !Array.isArray(stored.styles) || !stored.mianmian || !currentMatches())
+            throw Error('旧副本清理：当前数据尚未通过服务器核验，下次重试');
+        const domains=['styles','char','user','preferences','extras','personaTags','notes'];
+        const local=hostWindow.localStorage;
+        const plans=[
+            {store:local, keys:[ID,'ame-style-management-v03',MM_LOCAL_KEY,...domains.map(x=>'鲜虾鱼板面.v2.'+x),...domains.map(x=>'鲜虾鱼板面.unsaved.v84.'+x)]},
+            {store:account, keys:domains.map(x=>'鲜虾鱼板面.v2.'+x).concat('ame-style-management-v05_backup_preferences_v1')}
+        ];
+        const digest=async raw=>Array.from(new Uint8Array(await hostWindow.crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)))).map(x=>x.toString(16).padStart(2,'0')).join('');
+        let removed=0;
+        for(const plan of plans){
+            const rawLedger=plan.store===account?server.accountStorage?.[MM_RETIRED_KEY]:local.getItem(MM_RETIRED_KEY);
+            const ledger=JSON.parse(rawLedger||'{}');
+            if(!ledger || typeof ledger!=='object' || Array.isArray(ledger))throw Error('旧副本清理记录损坏，未删除');
+            let changed=false;
+            for(const key of plan.keys){
+                const raw=plan.store===account?server.accountStorage?.[key]:local.getItem(key);
+                if(raw==null){if(ledger[key]){delete ledger[key];changed=true;}continue;}
+                if(typeof raw!=='string')throw Error('旧副本格式异常，未删除：'+key);
+                // Malformed records are reported, not silently discarded.
+                const value=JSON.parse(raw);if(!value || typeof value!=='object')throw Error('旧副本内容异常：'+key);
+                const hash=await digest(raw),previous=ledger[key];
+                if(!previous || previous.hash!==hash || !Number.isFinite(previous.retiredAt) || previous.retiredAt<=0 || previous.retiredAt>Date.now()){
+                    ledger[key]={hash,retiredAt:Date.now()};changed=true;continue;
+                }
+                if(previous.retiredAt>=cutoff)continue;
+                // Recheck after asynchronous work; a concurrent edit cancels deletion.
+                if(mmStorageMode()!=='tavern' || !currentMatches())throw Error('当前数据发生变化，旧副本清理已暂停');
+                if(plan.store.getItem(key)!==raw)continue;
+                if(plan.store===account){const latest=await mmBackupServerSettings();if(latest.accountStorage?.[key]!==raw)continue;}
+                if(plan.store.getItem(key)!==raw)continue;
+                plan.store.removeItem(key);delete ledger[key];changed=true;removed++;
+            }
+            if(changed){
+                const encoded=JSON.stringify(ledger);plan.store.setItem(MM_RETIRED_KEY,encoded);
+                if(plan.store===account){
+                    ctx.saveSettingsDebounced?.();
+                    if(typeof ctx.saveSettingsDebounced?.flush==='function')await ctx.saveSettingsDebounced.flush();
+                    const check=await mmBackupServerSettings();
+                    if(check.accountStorage?.[MM_RETIRED_KEY]!==encoded)throw Error('旧副本清理记录等待酒馆保存，下次重试');
+                }
+            }
+        }
+        mmLog('retiredCopies','clean','completed','',undefined,{removed});
     }
 
     function mmBackupCutoff(retention, now = Date.now()) {
@@ -1539,6 +1613,10 @@
         mmBackupStatus(action === 'scan' ? '扫描中…' : '清理中…');
         mmLog('backupCleaner', action, automatic ? 'automatic-start' : 'clicked');
         try {
+            if(action==='clean'){
+                try{await mmRetiredCleanup(settings.retention);}
+                catch(error){mmLog('retiredCopies','clean','failed',error.message);toast(error.message,'warning');}
+            }
             const scan = await mmBackupScan(settings.retention);
             if (mmBackupStopped) return;
             if (action === 'scan') {
@@ -1571,7 +1649,9 @@
             mmLog('backupCleaner', action, 'failed', error.message);
             if (automatic) toast('备份清理失败：' + error.message, 'error');
         } finally {
-            mmBackupBusy = false;
+            const report=mmBackupReport;mmBackupReport=null;
+            if(report?.token)await mmSettingsFetch('/api/data-maid/finalize',{token:report.token}).catch(error=>mmLog('backupCleaner','settings','finalize-failed',error));
+            mmBackupBusy=false;
             if (!mmBackupStopped) mmBackupSetBusy(false);
         }
     }
@@ -1582,7 +1662,13 @@
         const settings = mmBackupSettings();
         if (mmBackupCutoff(settings.retention) === null) return;
         if (settings.schedule === 'startup') {
-            if (startup) mmBackupTimer = hostWindow.setTimeout(() => mmBackupRun('clean', true), 2500);
+            if (startup) {
+                const later=()=>{if(mmBackupStopped)return;mmBackupTimer=hostWindow.setTimeout(()=>{
+                    const run=()=>{if(!mmBackupStopped&&mmBackupSettings().schedule==='startup')mmBackupRun('clean',true);};
+                    if(typeof hostWindow.requestIdleCallback==='function')hostWindow.requestIdleCallback(run,{timeout:5000});else run();
+                },10000);};
+                if(root.readyState==='complete')later();else hostWindow.addEventListener('load',later,{once:true});
+            }
             return;
         }
         if (!['daily', 'weekly'].includes(settings.schedule)) return;
@@ -1602,7 +1688,7 @@
         return /^chat_[^/\\]+\.jsonl$/i.test(name) && !name.includes('..');
     }
     async function mmBackupList() {
-        const list = await (await mmBackupFetch('/api/backups/chat/get')).json();
+        const list = await (await mmSettingsFetch('/api/backups/chat/get')).json();
         if (!Array.isArray(list)) throw new Error('备份列表格式异常');
         return list.filter(item => mmBackupValidName(String(item?.file_name || '')))
             .map(item => ({ name: String(item.file_name), time: mmBackupTime(item), size: mmBackupSize(item) }))
@@ -1781,7 +1867,7 @@
                 const current = new Set((await mmBackupList()).map(x => x.name));
                 for (const name of names) {
                     if (!current.has(name)) { files = files.filter(x => x.name !== name); picks.delete(name); continue; }
-                    try { await mmBackupFetch('/api/backups/chat/delete', { name }); deleted++; files = files.filter(x => x.name !== name); picks.delete(name); cache.delete(name); }
+                    try { await mmSettingsFetch('/api/backups/chat/delete', { name }); deleted++; files = files.filter(x => x.name !== name); picks.delete(name); cache.delete(name); }
                     catch (error) { failed++; mmLog('backupManualDelete', 'chat', 'file-failed', error); }
                     status('已处理 ' + (deleted + failed) + ' / ' + names.length + ' 个…');
                 }
@@ -1797,6 +1883,7 @@
         dialog.showModal(); await scan();
     }
 
+    function mmBackupSaveStatus(text){const node=root.getElementById('awmBackupSaveStatus');if(node)node.textContent=text;}
     async function mmBackupBind(main) {
         const section = main.querySelector('#awmBackupSection');
         if (!section) return;
@@ -1818,26 +1905,26 @@
             q('awmBackupDaily').hidden = mode !== 'daily';
             q('awmBackupWeekly').hidden = mode !== 'weekly';
         };
+        let saveSequence=0;
         ['awmBackupRetention', 'awmBackupSchedule', 'awmBackupDailyTime', 'awmBackupWeeklyDay', 'awmBackupWeeklyTime'].forEach(id => {
             const persist = async () => {
                 mmLog('backupPreferences', 'settings', 'changed', '', undefined, { field: id, value: q(id).value });
-                controls.forEach(x=>x.disabled=true);mmBackupStatus('…');
+                const sequence=++saveSequence;sync();mmBackupSaveStatus('…');
                 try {
                     await mmBackupPersist({ retention: q('awmBackupRetention').value, schedule: q('awmBackupSchedule').value, dailyTime: q('awmBackupDailyTime').value || '04:00', weeklyDay: q('awmBackupWeeklyDay').value, weeklyTime: q('awmBackupWeeklyTime').value || '04:00' });
-                    sync(); mmBackupSchedule();
-                    mmBackupStatus(q('awmBackupRetention').value === 'off' ? '自动清理未开启' : '设置已保存');
-                } catch (error) { mmBackupStatus('设置保存失败：' + error.message); mmLog('backupPreferences', 'settings', 'failed', error); } finally {controls.forEach(x=>x.disabled=false);}
+                    if(sequence!==saveSequence)return;
+                    mmBackupSchedule();mmBackupSaveStatus('设置已保存');
+                } catch (error) { if(sequence===saveSequence){mmBackupSaveStatus('保存失败');mmBackupStatus('设置保存失败：'+error.message);}mmLog('backupPreferences','settings','failed',error); }
             };
             q(id).onchange = persist;
 
         });
         q('awmBackupManual').onclick = mmBackupOpen;
-        q('awmBackupClean').onclick = () => mmBackupRun('clean');
         sync(); mmBackupSetBusy(mmBackupBusy);
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V8.5 isolated backup cleaner.
+    // END V8.7 isolated backup cleaner.
 
     function bindExtensionSettings(main) {
         mmBackupBind(main);
@@ -2326,7 +2413,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '8.5', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '8.6', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -2374,7 +2461,7 @@
         try { return JSON.parse(hostWindow.localStorage.getItem(MM_PERSONA_TAG_KEY) || '{}'); }
         catch (_) { return {}; }
     }
-    function mmPersonaTags(id) { return Array.isArray(mmTagMap()[id]) ? [...mmTagMap()[id]] : []; }
+    function mmPersonaTags(id) { const map=mmTagMap();return Array.isArray(map[id]) ? [...map[id]] : []; }
     // 酒馆本地标签归属于头像文件名；角色卡 data.tags 是导出时的副本。
     function mmNativeCharTags(avatarId) {
         const ctx = hostWindow.SillyTavern?.getContext?.();
@@ -2404,7 +2491,9 @@
     function mmSavePersonaTags(id, tags) {
         if (!id) throw new Error('缺少 User 头像 ID，标签未保存');
         const map = mmTagMap();
-        map[id] = [...new Set((tags || []).map(x => String(x).trim()).filter(Boolean))];
+        const wanted=[...new Set((tags || []).map(x => String(x).trim()).filter(Boolean))];
+        if(JSON.stringify(map[id])===JSON.stringify(wanted))return;
+        map[id] = wanted;
         hostWindow.localStorage.setItem(MM_PERSONA_TAG_KEY, JSON.stringify(map));
         if (JSON.stringify(mmPersonaTags(id)) !== JSON.stringify(map[id])) throw new Error('User 标签保存校验失败');
         mmRefreshPersonaTags();
@@ -2418,7 +2507,7 @@
             if (!Object.hasOwn(map,id)) return;
             let box = card.querySelector('.awm-persona-tags');
             if (!box) { box = root.createElement('div'); box.className = 'awm-persona-tags'; (card.querySelector('.character_select_container') || card).appendChild(box); }
-            const wanted = mmPersonaTags(id);
+            const wanted = Array.isArray(map[id])?map[id]:[];
             if (JSON.stringify([...box.children].map(node => node.textContent)) === JSON.stringify(wanted)) return;
             box.replaceChildren();
             for (const tag of wanted) {
@@ -2428,7 +2517,16 @@
     }
     function mmWatchPersonaTags() {
         if (hostWindow.__awmPersonaTagObserver) return;
-        const observer = new MutationObserver(() => { clearTimeout(hostWindow.__awmPersonaTagTimer); hostWindow.__awmPersonaTagTimer = hostWindow.setTimeout(mmRefreshPersonaTags, 90); });
+        const relevant=node=>node?.nodeType===1 && (node.matches('.avatar-container[data-avatar-id]')||node.querySelector('.avatar-container[data-avatar-id]'));
+        const observer = new MutationObserver(records => {
+            const changed=records.some(record=>{
+                const target=record.target.nodeType===1?record.target:record.target.parentElement;
+                if(target?.closest('.awm-persona-tags,#awm-panel-v03,#awmChatBackupDialog'))return false;
+                return !!target?.closest('.avatar-container[data-avatar-id]') || [...record.addedNodes].some(relevant);
+            });
+            if(!changed)return;
+            clearTimeout(hostWindow.__awmPersonaTagTimer);hostWindow.__awmPersonaTagTimer=hostWindow.setTimeout(mmRefreshPersonaTags,90);
+        });
         observer.observe(root.body || root.documentElement, { childList: true, subtree: true });
         hostWindow.__awmPersonaTagObserver = observer;
         mmRefreshPersonaTags();
@@ -2454,7 +2552,7 @@
         return data;
     }
     function mmReadBrowser() {
-        try { const text = hostWindow.localStorage.getItem(MM_LOCAL_KEY); return text ? mmNormalize(JSON.parse(text)) : null; }
+        try { const text = mmStorageMode()==='tavern' && mmRetiredLocal(MM_LOCAL_KEY) ? null : hostWindow.localStorage.getItem(MM_LOCAL_KEY); return text ? mmNormalize(JSON.parse(text)) : null; }
         catch (_) { return null; }
     }
     function mmReadSelected() {
@@ -2561,8 +2659,17 @@
         const card = message?.card;
         if (!card?.data || !capturedTarget) return false;
         if (capturedTarget.name && card.data.name !== capturedTarget.name) return false;
-        const value = mmNormalize(load());
         const key = mmDraftKey(side, capturedTarget);
+        if(key!==mmDraftKey(side,mmRuntime.target[side]))return false;
+        const current=load(), previous=current.mianmian?.drafts?.[side]?.[key];
+        if(previous && current.mianmian?.active?.[side]===key && (silent||previous.confirmed)
+            && JSON.stringify(previous.target)===JSON.stringify(capturedTarget)
+            && JSON.stringify(previous.card)===JSON.stringify(card)
+            && previous.avatarData===(message.avatarData||'')){
+            if(!silent){if(side==='user'&&capturedTarget.kind==='existing'&&Array.isArray(message.userTags))mmSavePersonaTags(capturedTarget.id,message.userTags);toast('面面草稿已保存','success');}
+            return true;
+        }
+        const value = mmNormalize(current);
         value.mianmian.drafts[side][key] = {
             target: { ...capturedTarget }, card,
             avatarData: message.avatarData || '', modified: Date.now(),
@@ -3947,7 +4054,7 @@
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V8.5 loaded');
+        console.log('[鲜虾鱼板面] V8.7 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
