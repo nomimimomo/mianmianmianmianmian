@@ -35,7 +35,7 @@
 #awm-extension-settings .awm-backup-extra[hidden]{display:none!important}
 #awm-extension-settings .awm-backup-extra select,#awm-extension-settings .awm-backup-extra input{min-width:0;width:100%;flex:1;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:5px;font:inherit}
 #awm-extension-settings .awm-backup-help,#awm-extension-settings .awm-backup-status{font-size:.85em;line-height:1.5;opacity:.8;margin:8px 0 0;overflow-wrap:anywhere}
-#awm-extension-settings .awm-backup-actions{justify-content:flex-end}
+#awm-extension-settings .awm-backup-actions{justify-content:flex-start}
 #awm-extension-settings #awmBackupSection button:disabled{opacity:.6;cursor:wait}
 @media(max-width:650px){#awm-extension-settings .awm-backup-fields{grid-template-columns:minmax(0,1fr)}}
 
@@ -92,3 +92,9 @@
 #awm-extension-settings .awm-backup-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 #awm-extension-settings .awm-backup-heading h3{margin:0}
 #awmBackupSaveStatus{font-size:.85em;opacity:.8}
+
+/* 清理区统一字号；标题右侧状态不另起一行。 */
+#awm-extension-settings .awm-backup-heading{flex-wrap:nowrap;justify-content:space-between;margin-bottom:8px}
+#awm-extension-settings #awmBackupSaveStatus{font:inherit;opacity:1;white-space:nowrap}
+#awm-extension-settings .awm-backup-help,#awm-extension-settings .awm-backup-status{font:inherit;opacity:1;line-height:1.5}
+#awm-extension-settings .awm-backup-actions button.menu_button{flex:0 0 auto;margin:0}

@@ -1345,7 +1345,7 @@
         </section>`;
         awmLayoutBindSettings(main);
     }
-    // BEGIN V8.7 isolated backup cleaner.
+    // BEGIN V8.8 isolated backup cleaner.
     const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
@@ -1414,7 +1414,7 @@
         if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
     }
 
-    // V8.7: retired copies stay in place until the shared retention expires.
+    // V8.8: retired copies stay in place until the shared retention expires.
     const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
     function mmRetiredLocal(key) {
         try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
@@ -1453,10 +1453,14 @@
                 // Malformed records are reported, not silently discarded.
                 const value=JSON.parse(raw);if(!value || typeof value!=='object')throw Error('旧副本内容异常：'+key);
                 const hash=await digest(raw),previous=ledger[key];
-                if(!previous || previous.hash!==hash || !Number.isFinite(previous.retiredAt) || previous.retiredAt<=0 || previous.retiredAt>Date.now()){
-                    ledger[key]={hash,retiredAt:Date.now()};changed=true;continue;
-                }
-                if(previous.retiredAt>=cutoff)continue;
+                const originalTime=key.startsWith('鲜虾鱼板面.v2.')?value.updated:
+                    key.startsWith('鲜虾鱼板面.unsaved.v84.')?value.time:null;
+                const dated=typeof originalTime==='number'&&Number.isFinite(originalTime)&&originalTime>0&&originalTime<=Date.now();
+                const same=previous?.hash===hash;
+                const fallback=same&&Number.isFinite(previous.retiredAt)&&previous.retiredAt>0&&previous.retiredAt<=Date.now()?previous.retiredAt:Date.now();
+                const retiredAt=dated?originalTime:fallback;
+                if(!same||previous.retiredAt!==retiredAt){ledger[key]={hash,retiredAt};changed=true;}
+                if(retiredAt>=cutoff)continue;
                 // Recheck after asynchronous work; a concurrent edit cancels deletion.
                 if(mmStorageMode()!=='tavern' || !currentMatches())throw Error('当前数据发生变化，旧副本清理已暂停');
                 if(plan.store.getItem(key)!==raw)continue;
@@ -1558,15 +1562,22 @@
         if (cutoff === null) return { files: [], bytes: 0, total: 0, skipped: 0 };
         const list = await (await mmBackupFetch('/api/backups/chat/get')).json();
         if (!Array.isArray(list)) throw new Error('备份列表格式异常');
-        const result = { files: [], bytes: 0, total: 0, skipped: 0 };
+        const result = { files: [], bytes: 0, total: 0, skipped: 0, empty: 0 };
         for (const item of list) {
             // Never pass settings backups, paths or arbitrary file names to deletion.
             const name = String(item?.file_name || '');
             if (!name || /[/\\]/.test(name) || name.includes('..')) continue;
             result.total++;
             const time = mmBackupTime(item);
-            if (!time) { result.skipped++; continue; }
-            if (time < cutoff) { const size = mmBackupSize(item); result.files.push({ name, size }); result.bytes += size; }
+            let reason=time && time<cutoff?'expired':'';
+            if(!reason && mmBackupValidName(name)){
+                try{const response=await mmSettingsFetch('/api/backups/chat/download',{name});
+                    if(mmBackupLastMessage(await response.text()).emptyConfirmed){reason='empty';result.empty++;}}
+                catch(error){result.skipped++;mmLog('backupCleaner','empty-check','failed',error.message);}
+                if(mmBackupStopped)break;
+            }
+            if(reason){const size=mmBackupSize(item);result.files.push({name,size,reason});result.bytes+=size;}
+            else if(!time)result.skipped++;
         }
         return result;
     }
@@ -1589,7 +1600,7 @@
         const accept = root.getElementById('awmBackupConfirmAccept');
         const cancel = root.getElementById('awmBackupConfirmCancel');
         if (!box || !message || !accept || !cancel) throw new Error('清理确认区域未加载');
-        message.textContent = '将删除 ' + scan.files.length + ' 个过期聊天备份，释放约 ' + mmBackupFormat(scan.bytes) + '。原始聊天记录不会删除。';
+        message.textContent = '将删除 ' + scan.files.length + ' 个过期或空白备份，释放约 ' + mmBackupFormat(scan.bytes) + '。原始聊天记录不会删除。';
         box.hidden = false;
         mmBackupStatus('请确认是否清理');
         return new Promise(resolve => {
@@ -1624,7 +1635,7 @@
                 mmLog('backupCleaner', 'scan', 'completed', '', undefined, { total: scan.total, expired: scan.files.length, bytes: scan.bytes, skipped: scan.skipped });
                 return;
             }
-            if (!scan.files.length) { mmBackupStatus('没有需要清理的聊天备份'); return; }
+            if (!scan.files.length) { mmBackupStatus('没有需要清理的备份'); return; }
             if (!automatic && !await mmBackupConfirm(scan)) { mmBackupStatus('已取消清理'); return; }
             if (mmBackupStopped) return;
             let index = 0, deleted = 0, freed = 0, failed = 0;
@@ -1695,22 +1706,32 @@
             .sort((a, b) => b.time - a.time || b.name.localeCompare(a.name));
     }
     function mmBackupLastMessage(text) {
-        let last = null, nonempty = null, count = 0;
-        const searchParts = [];
-        for (const line of String(text).replace(/^\uFEFF/, '').split(/\r?\n/)) {
-            if (!line.trim()) continue;
-            let item;
-            try { item = JSON.parse(line); } catch (_) { throw new Error('备份包含损坏的消息，无法完整读取'); }
-            if (item && typeof item === 'object' && typeof item.mes === 'string') {
-                last = item; count++;
-                searchParts.push(String(item.name || ''), item.mes);
-                if (item.mes.trim()) nonempty = item;
-            }
+        const source=String(text).replace(/^\uFEFF/,'').trim();
+        let records=[];
+        if(source){
+            try{
+                const whole=JSON.parse(source);
+                if(Array.isArray(whole))records=whole;
+                else if(Array.isArray(whole?.chat))records=whole.chat;
+                else if(Array.isArray(whole?.messages))records=whole.messages;
+                else records=[whole];
+            }catch(_){records=source.split(/\r?\n/).filter(x=>x.trim()).map(line=>{
+                try{return JSON.parse(line);}catch(_){throw Error('备份包含损坏的内容，无法完整读取');}
+            });}
         }
-        if (!last) return { name: '', text: '此备份没有聊天消息。', date: '', count: 0, emptyLast: false, searchText: '' };
-        const shown = last.mes.trim() ? last : nonempty;
-        return { name: String(shown?.name || ''), text: shown?.mes || '最后一条消息为空。',
-            date: String(shown?.send_date || ''), count, emptyLast: !last.mes.trim(), searchText: searchParts.join('\n').toLocaleLowerCase() };
+        let last=null,nonempty=null,count=0,unknown=false;const searchParts=[];
+        for(const item of records){
+            if(item&&typeof item==='object'&&typeof item.mes==='string'){
+                last=item;count++;searchParts.push(String(item.name||''),item.mes);
+                if(item.mes.trim())nonempty=item;
+            }else if(!item||typeof item!=='object'||Array.isArray(item)||
+                !['chat_metadata','user_name','character_name','create_date','chat_create_date'].some(k=>Object.hasOwn(item,k)))unknown=true;
+        }
+        const emptyConfirmed=count===0&&!unknown;
+        if(!last)return {name:'',text:emptyConfirmed?'此备份没有聊天消息。':'此备份格式无法识别，未判断为空文件。',date:'',count:0,emptyLast:false,emptyConfirmed,searchText:''};
+        const shown=last.mes.trim()?last:nonempty;
+        return {name:String(shown?.name||''),text:shown?.mes||'最后一条消息为空。',date:String(shown?.send_date||''),
+            count,emptyLast:!last.mes.trim(),emptyConfirmed:false,searchText:searchParts.join('\n').toLocaleLowerCase()};
     }
     async function mmBackupOpen() {
         const existing = root.getElementById('awmChatBackupDialog');
@@ -1920,11 +1941,12 @@
 
         });
         q('awmBackupManual').onclick = mmBackupOpen;
+        q('awmBackupClean').onclick = ()=>mmBackupRun('clean');
         sync(); mmBackupSetBusy(mmBackupBusy);
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V8.7 isolated backup cleaner.
+    // END V8.8 isolated backup cleaner.
 
     function bindExtensionSettings(main) {
         mmBackupBind(main);
@@ -2413,7 +2435,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '8.6', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '8.8', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -2762,46 +2784,6 @@
             _mmRaw: raw
         };
     }
-    function mmToWorldEntry(entry, index) {
-        const raw = entry._mmRaw || {};
-        const uid = Number.isInteger(raw.uid) ? raw.uid : index;
-        if (Number.isInteger(raw.uid) && !entry._mmCreated) return { ...raw, uid, name: entry.comment || '', content: entry.content || '',
-            strategy: { ...(raw.strategy || {}), keys: Array.isArray(entry.keys) ? entry.keys : [] },
-            position: { ...(raw.position || {}), order: Number(entry.insertion_order) || index + 1 } };
-        return {
-            ...raw, uid, name: entry.comment || '', enabled: entry.enabled !== false,
-            strategy: {
-                ...(raw.strategy || {}),
-                type: entry.constant ? 'constant' : 'selective',
-                keys: Array.isArray(entry.keys) ? entry.keys : [],
-                keys_secondary: {
-                    ...(raw.strategy?.keys_secondary || {}),
-                    logic: raw.strategy?.keys_secondary?.logic || 'and_any',
-                    keys: Array.isArray(entry.secondary_keys) ? entry.secondary_keys : []
-                },
-                scan_depth: raw.strategy?.scan_depth ?? 'same_as_global'
-            },
-            position: {
-                ...(raw.position || {}), type: raw.position?.type || ({0:'before_character_definition',1:'after_character_definition',2:'before_example_messages',3:'after_example_messages',4:'at_depth',5:'before_author_note',6:'after_author_note'}[entry._mmEmbeddedRaw?.extensions?.position] || 'before_character_definition'),
-                role: raw.position?.role || 'system', depth: raw.position?.depth ?? entry._mmEmbeddedRaw?.extensions?.depth ?? 0,
-                order: Number(entry.insertion_order) || index + 1
-            },
-            content: entry.content || '', probability: raw.probability ?? 100,
-            recursion: raw.recursion || { prevent_incoming: false, prevent_outgoing: false, delay_until: null },
-            effect: raw.effect || { sticky: null, cooldown: null, delay: null }
-        };
-    }
-    function mmWorldEntries(entries) {
-        const used = new Set(entries.filter(e => Number.isInteger(e._mmRaw?.uid)).map(e => e._mmRaw.uid));
-        let next = 0;
-        return entries.map((e, i) => {
-            if (!Number.isInteger(e._mmRaw?.uid)) {
-                while (used.has(next)) next++;
-                e = { ...e, _mmRaw: { uid: next }, _mmCreated: true }; used.add(next++);
-            }
-            return mmToWorldEntry(e, i);
-        });
-    }
     function mmReadEmbeddedBook(book, name) {
         const entries = Array.isArray(book.entries) ? book.entries : Object.values(book.entries || {});
         return { name: String(book.name || name + ' 世界书'), entries: entries.map((entry, index) => ({
@@ -3115,20 +3097,47 @@
                 }
             } else throw new Error('世界书名称与其他世界书重名，请修改名称');
         }
-        const entries = mmWorldEntries(book.entries || []);
-        mmLog('writeBook',side,exists?'replace-start':'create-start',null,null,{name,count:entries.length});
-        if (exists) await mmApi('replaceWorldbook')(name,entries,{render:'immediate'});
-        else {
-            const created = await mmApi('createWorldbook')(name,entries);
-            if (!created) throw new Error('世界书未创建成功：'+name);
+        const native=await import('/scripts/world-info.js');
+        if(typeof native.createWorldInfoEntry!=='function'||typeof native.saveWorldInfo!=='function')
+            throw Error('酒馆原生世界书接口不可用，未覆盖');
+        const edits=book.entries||[];
+        const live=exists?await (await mmSettingsFetch('/api/worldinfo/get',{name})).json():{entries:{}};
+        if(!live.entries||Array.isArray(live.entries)||typeof live.entries!=='object')throw Error('世界书原始数据无法读取，未覆盖');
+        const before=structuredClone(live.entries),written=[];
+        const snapshot=mmRuntime.loadedWorldbooks[side];
+        const knownUids=new Set((snapshot?.name===name?snapshot.entries:[]).map(e=>e._mmRaw?.uid).filter(Number.isInteger));
+        const retained=new Set();
+        for(const e of edits){
+            const uid=e._mmRaw?.uid ?? (/^wb_\d+$/.test(String(e.id))?Number(String(e.id).slice(3)):null);
+            let entry;
+            if(uid!==null){
+                entry=live.entries[uid];
+                if(!entry)throw Error('世界书条目已在酒馆删除，请重新读取后再保存');
+                if(retained.has(uid))throw Error('世界书条目 ID 重复，未覆盖');
+            }else{
+                entry=native.createWorldInfoEntry(name,live);
+                if(!entry)throw Error('世界书默认条目创建失败');
+                entry.comment=String(e.comment||'');
+            }
+            entry.content=String(e.content||'');entry.key=Array.isArray(e.keys)?e.keys:[];
+            retained.add(entry.uid);written.push(entry.uid);
         }
+        for(const uid of knownUids)if(!retained.has(uid))delete live.entries[uid];
+        if(!exists){const created=await mmApi('createWorldbook')(name,[]);if(!created)throw Error('世界书未创建成功：'+name);}
+        await native.saveWorldInfo(name,live,true);
         mmRuntime.bookClaims.add(side+':'+target.id+':'+name);
-        const actual = await mmApi('getWorldbook')(name);
-        const norm = v=>String(v||'').replace(/\r\n?/g,'\n');
-        if (!Array.isArray(actual) || actual.length !== entries.length || entries.some(e=>!actual.some(a=>a.uid===e.uid && a.name===e.name && norm(a.content)===norm(e.content) && JSON.stringify(a.strategy?.keys||[])===JSON.stringify(e.strategy.keys))))
-            throw new Error('世界书写入回读不一致：'+name);
-        book.name = name;
-        (book.entries || []).forEach((e,i)=>{e._mmRaw=structuredClone(actual.find(a=>a.uid===entries[i].uid));});
+        const check=await (await mmSettingsFetch('/api/worldinfo/get',{name})).json();
+        const norm=v=>String(v||'').replace(/\r\n?/g,'\n');
+        if(edits.some((e,i)=>{const a=check.entries?.[written[i]];return !a||norm(a.content)!==norm(e.content)||JSON.stringify(a.key||[])!==JSON.stringify(e.keys||[]);}))
+            throw Error('世界书写入回读不一致：'+name);
+        for(const [uid,original] of Object.entries(before)){
+            const a=check.entries?.[uid];if(!a)continue;
+            const metadata=e=>({...e,content:undefined,key:undefined});
+            if(JSON.stringify(metadata(a))!==JSON.stringify(metadata(original)))throw Error('世界书原条目参数核对不一致：'+uid);
+        }
+        const actual=await mmApi('getWorldbook')(name);
+        book.name=name;
+        edits.forEach((e,i)=>{e._mmRaw=structuredClone(actual.find(a=>a.uid===written[i]));});
         mmRuntime.loadedWorldbooks[side] = {name,entries:structuredClone(book.entries||[]),failed:false,embedded:false};
         mmLog('writeBook',side,'verified',null,null,{name,count:actual.length,uids:actual.map(e=>e.uid)});
         return name;
@@ -3157,6 +3166,24 @@
             {name,cardWorldbook:card.data.worldbook||'',cardExtensionWorld:card.data.extensions?.world||''});
         return card;
     }
+    async function mmConfirmPersona(id, expected) {
+        const ctx=hostWindow.SillyTavern?.getContext?.();
+        if(typeof ctx?.saveSettingsDebounced?.flush==='function')await ctx.saveSettingsDebounced.flush();
+        const end=Date.now()+15000;let pause=300;
+        while(true){
+            const saved=await mmBackupServerSettings(),descriptor=saved.power_user?.persona_descriptions?.[id];
+            if(descriptor && Object.entries(expected).every(([key,value])=>descriptor[key]===value))break;
+            if(Date.now()>=end)throw Error('User 人设尚未通过服务器保存核验，编辑稿已保留');
+            await new Promise(r=>hostWindow.setTimeout(r,pause));pause=Math.min(2000,pause*2);
+        }
+        if(mmApi('getCurrentPersonaId')()===id){
+            const field=root.getElementById('persona_description');
+            if(field && expected.description!==undefined)field.value=expected.description;
+            // Native helper refreshes the avatar list, but not this description control.
+            try{const native=await import('/scripts/personas.js');if(native.user_avatar===id)native.setPersonaDescription();}
+            catch(error){mmLog('writePersona','user','native-ui-refresh-unavailable',error.message);}
+        }
+    }
     async function mmWriteBookOnly(side, message, target) {
         const book=message.card.data.character_book;
         let oldName='';
@@ -3169,7 +3196,8 @@
         if (side==='char') {
             mmRuntime.rawCards.char=await mmEnsureCharBookLink(target,name);
         } else {
-            await mmApi('updatePersonaWith')(target.id,p=>({...p,lorebook:name}),{render:'immediate'});
+            await mmApi('updatePersonaWith')(target.id,p=>({...p,lorebook:name}),{render:'none'});
+            await mmConfirmPersona(target.id,{lorebook:name});
             if (mmApi('getPersona')(target.id)?.lorebook!==name) throw new Error('User 世界书关联未保存');
         }
         mmFrame(side)?.contentWindow?.__mmBookSaved?.(book);
@@ -3226,6 +3254,10 @@
             if (avatarBlob) current.avatar = avatarBlob;
             return current;
         };
+        if(!isChar && target.kind==='existing'){
+            await mmApi('updatePersonaWith')(target.id,current=>({...current,description:String(data.description||'')}),{render:'none'});
+            await mmConfirmPersona(target.id,{description:String(data.description||'')});
+        }
         bookName = await mmStoreBook(side, book, target, oldBookName);
         if (target.kind === 'new') {
             if (mmNames(side).includes(name)) throw new Error('酒馆中已存在同名资料');
@@ -3233,7 +3265,8 @@
             if (!created) throw new Error('酒馆没有确认创建成功');
         } else if (!isChar) {
             mmLog('writePersona', side, 'patch-start', '', began);
-            await mmApi('updatePersonaWith')(target.id, applyUser, { render:'immediate' });
+            await mmApi('updatePersonaWith')(target.id, applyUser, { render:'none' });
+            await mmConfirmPersona(target.id,{description:String(data.description||''),lorebook:bookName});
             mmLog('writePersona', side, 'patch-done', '', began);
         }
         let writeTargetId = target.id, writtenRawCharacter = null;
@@ -3255,6 +3288,7 @@
         mmLog(isChar ? 'writeCharacter' : 'writePersona', side, 'saved', '', began);
         mmLog(isChar ? 'verifyCharacter' : 'verifyPersona', side, 'start', '', began);
         const newId = target.kind === 'new' && !isChar ? mmPersonaIdentity(name) : writeTargetId;
+        if(!isChar && target.kind==='new')await mmConfirmPersona(newId,{description:String(data.description||''),lorebook:bookName});
         const after = isChar ? null : await mmApi('getPersona')(newId);
         mmLog(isChar ? 'verifyCharacter' : 'verifyPersona', side, 'readback', '', began);
         const expected = isChar ? applyChar({}) : applyUser({});
@@ -4054,7 +4088,7 @@
         mmWatchPersonaTags();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V8.7 loaded');
+        console.log('[鲜虾鱼板面] V8.8 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
