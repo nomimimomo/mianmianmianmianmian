@@ -99,7 +99,7 @@
 #awm-extension-settings .awm-backup-help,#awm-extension-settings .awm-backup-status{font:inherit;opacity:1;line-height:1.5}
 #awm-extension-settings .awm-backup-actions button.menu_button{flex:0 0 auto;margin:0}
 
-/* V9.0: one frame for preset search and backup browsing, matching the main panel. */
+/* V9.1: one frame for preset search and backup browsing, matching the main panel. */
 :is(#awmChatBackupDialog,#awmPresetSearchDialog).awm-tool-dialog{box-sizing:border-box;--awm-tool-pad:10px;position:fixed;inset:auto;margin:0;padding:0;max-width:none;max-height:none;min-width:0;min-height:0;transform:none;border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,10px);background:var(--SmartThemeBlurTintColor);color:var(--SmartThemeBodyColor);font-family:var(--mainFontFamily,inherit);font-size:var(--mainFontSize,1rem);box-shadow:0 10px 35px rgba(0,0,0,.35);overflow:hidden}
 .awm-tool-dialog::backdrop{background:var(--black70a,rgba(0,0,0,.35))}
 .awm-tool-dialog *{box-sizing:border-box;min-width:0}
@@ -142,3 +142,6 @@
 #awmPresetSearchDialog .awm-preset-full-title{font:inherit;font-weight:600;margin:0 0 12px;white-space:pre-wrap}
 #awmPresetSearchDialog .awm-preset-body{white-space:pre-wrap;line-height:1.65;tab-size:4}
 @media(max-width:600px){:is(#awmChatBackupDialog,#awmPresetSearchDialog).awm-tool-dialog{--awm-tool-pad:6px}:is(#awmChatBackupDialog,#awmPresetSearchDialog) header{padding-left:6px;padding-right:6px}#awmChatBackupDialog .awm-chat-backup-tools{gap:5px}#awmPresetSearchDialog .awm-preset-view nav{gap:4px}}
+
+/* Preset search is a non-modal tool: the native editor remains interactive. */
+#awmPresetSearchDialog.awm-tool-dialog{z-index:100001}

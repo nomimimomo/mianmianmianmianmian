@@ -1345,7 +1345,7 @@
         </section>`;
         awmLayoutBindSettings(main);
     }
-    // BEGIN V9.0 isolated backup cleaner.
+    // BEGIN V9.1 isolated backup cleaner.
     const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
@@ -1414,7 +1414,7 @@
         if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
     }
 
-    // V9.0: retired copies stay in place until the shared retention expires.
+    // V9.1: retired copies stay in place until the shared retention expires.
     const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
     function mmRetiredLocal(key) {
         try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
@@ -1746,7 +1746,7 @@
         const margin=rect?0:8;
         const width=Math.min(vp.w-margin*2,rect?.width||(mobile?vp.w-24:narrow?.width||saved?.size||680));
         const height=Math.min(rect?vp.h:available,rect?.height||(mobile?Math.min(622,saved?.size||622):available));
-        const left=rect?.left??narrow?.left??(saved?vp.x+(+saved.x||0)*vp.w:vp.x+(vp.w-width)/2);
+        const left=rect?.left??narrow?.left??(saved?vp.x+(+saved.x||0)*vp.w:(dialog.id==='awmPresetSearchDialog'&&!mobile?vp.x+vp.w-width-8:vp.x+(vp.w-width)/2));
         const top=rect?.top??(saved?vp.y+(+saved.y||0)*vp.h:(mobile?band.top+(available-height)/2:band.top));
         Object.assign(dialog.style,{width:Math.max(0,width)+'px',height:Math.max(0,height)+'px',
             left:Math.max(vp.x+margin,Math.min(vp.x+vp.w-width-margin,left))+'px',
@@ -1787,9 +1787,19 @@
             if(!ref||seen.has(ref.identifier))continue;
             seen.add(ref.identifier);
             const prompt=byId.get(ref.identifier);
-            if(prompt&&(scope==='all'||ref.enabled))entries.push(prompt);
+            if(prompt&&(scope==='all'||ref.enabled))entries.push(mmPresetReadCurrentFields(prompt));
         }
         return entries;
+    }
+    function mmPresetReadCurrentFields(prompt) {
+        const visible=field=>field&&field.getClientRects().length>0;
+        const quick=root.getElementById(prompt.identifier+'_prompt_quick_edit_textarea');
+        const save=root.getElementById('completion_prompt_manager_popup_entry_form_save');
+        const name=root.getElementById('completion_prompt_manager_popup_entry_form_name');
+        const body=root.getElementById('completion_prompt_manager_popup_entry_form_prompt');
+        if(save?.dataset.pmPrompt===String(prompt.identifier)&&visible(body))return {...prompt,name:visible(name)?name.value:prompt.name,content:body.value};
+        // A view of the live native field; never assign this draft back to the preset or keep a copy.
+        return visible(quick)?{...prompt,content:quick.value}:prompt;
     }
     function mmPresetMatches(text,keyword) {
         if(!keyword)return [];
@@ -1798,6 +1808,18 @@
     }
     function mmPresetHits(prompt,keyword) {
         return ['name','content'].flatMap(source=>mmPresetMatches(prompt[source],keyword).map(hit=>({...hit,source})));
+    }
+    // One preview per matching sentence; original hit indexes/counts still drive full-text navigation.
+    function mmPresetHitGroups(prompt,hits) {
+        const groups=[];let source=null,text='',cursor=0,start=0,lastStart=-1;
+        for(let index=0;index<hits.length;index++){
+            const hit=hits[index];
+            if(hit.source!==source){source=hit.source;text=String(prompt[source]??'');cursor=0;start=0;lastStart=-1;}
+            while(cursor<hit.start){if(/[。！？!?；;\n]/.test(text[cursor]))start=cursor+1;cursor++;}
+            if(start===lastStart)continue;
+            groups.push({hit,index});lastStart=start;
+        }
+        return groups;
     }
     function mmPresetHighlight(node,text,keyword,marks=null) {
         text=String(text??'');let cursor=0;
@@ -1817,8 +1839,7 @@
         return (start>0&&!separators.test(text[start-1])?'…':'')+text.slice(start,end)+(end<text.length&&!separators.test(text[end-1])?'…':'');
     }
     // Native quick-edit textareas save on blur. Block only the handoff blur, never rewrite their values.
-    function mmPresetFocusState() {
-        const field=root.activeElement;
+    function mmPresetFocusState(field=root.activeElement) {
         if(!field||!field.matches('textarea,input,select'))return null;
         if(!field.closest('#openai_settings,#completion_prompt_manager,#quick-edit-container,#completion_prompt_manager_popup')&&
             !field.matches('[data-pm-prompt],[id$="_prompt_quick_edit_textarea"],[id^="completion_prompt_manager_popup_entry_form_"]'))return null;
@@ -1832,13 +1853,14 @@
     async function mmPresetSearchOpen() {
         const existing=root.getElementById('awmPresetSearchDialog');
         if(existing){existing.querySelector('[data-search]')?.focus();return;}
-        const focus=mmPresetFocusState(),dialog=root.createElement('dialog');
-        dialog.id='awmPresetSearchDialog';dialog.setAttribute('aria-labelledby','awmPresetSearchTitle');
+        let focus=mmPresetFocusState(),restoreOnClose=false;
+        const dialog=root.createElement('dialog');
+        dialog.id='awmPresetSearchDialog';dialog.setAttribute('aria-labelledby','awmPresetSearchTitle');dialog.setAttribute('aria-modal','false');
         dialog.innerHTML=`<div class="awm-tool-shell">
             <header class="awm-tool-head"><h3 id="awmPresetSearchTitle">预设全文搜索</h3><button type="button" data-close aria-label="关闭搜索">×</button></header>
             <div class="awm-preset-search-bar"><input type="search" data-search placeholder="搜索名称和正文" aria-label="搜索预设名称和正文" autocomplete="off"><select data-scope aria-label="搜索范围"><option value="enabled">已启用</option><option value="all">全部</option></select></div>
             <p class="awm-preset-summary" data-summary role="status" aria-live="polite">读取当前预设…</p>
-            <div class="awm-preset-results" data-results></div>
+            <div class="awm-preset-results" data-results tabindex="0"></div>
             <section class="awm-preset-view" data-view hidden><nav><button type="button" data-back>‹ 返回结果</button><div class="awm-preset-navigation"><button type="button" data-prev>上一个</button><span data-position aria-live="polite"></span><button type="button" data-next>下一个</button></div></nav><div class="awm-preset-full" data-full tabindex="0" aria-label="条目完整正文"></div></section>
         </div>`;
         (root.documentElement||root.body).appendChild(dialog);
@@ -1858,7 +1880,7 @@
             const scroller=q('full'),a=mark.getBoundingClientRect(),b=scroller.getBoundingClientRect();
             scroller.scrollTop+=a.top-b.top-Math.max(0,(scroller.clientHeight-a.height)/2);
         };
-        const showEntry=(identifier,index=0)=>{
+        const showEntry=(identifier,index=0,focusView=true)=>{
             try{
                 const prompt=entries().find(x=>x.identifier===identifier);
                 if(!prompt){viewId=null;q('view').hidden=true;q('results').hidden=false;search();return;}
@@ -1866,7 +1888,7 @@
                 const title=el('h4','awm-preset-full-title');if(prompt.name)mmPresetHighlight(title,prompt.name,keyword(),marks);else title.textContent='未命名条目';
                 const body=el('div','awm-preset-body');mmPresetHighlight(body,prompt.content,keyword(),marks);
                 q('full').append(title,body);if(!q('results').hidden)resultScroll=q('results').scrollTop;q('results').hidden=true;q('view').hidden=false;
-                jump(Math.min(index,Math.max(0,marks.length-1)));
+                jump(Math.min(index,Math.max(0,marks.length-1)));if(focusView)q('full').focus({preventScroll:true});
             }catch(error){fail(error);}
         };
         const search=()=>{
@@ -1883,7 +1905,7 @@
                     const row=el('article','awm-preset-result'),head=el('div','awm-preset-result-head');
                     const name=el('button','awm-preset-entry-name');name.type='button';mmPresetHighlight(name,prompt.name||'未命名条目',text);
                     name.onclick=()=>showEntry(prompt.identifier);head.append(name,el('span','awm-preset-hit-count',hits.length+' 处'));row.append(head);
-                    hits.forEach((hit,index)=>{
+                    mmPresetHitGroups(prompt,hits).forEach(({hit,index})=>{
                         const link=el('button','awm-preset-hit');link.type='button';link.setAttribute('aria-label',(hit.source==='name'?'名称':'正文')+'第 '+(index+1)+' 处命中，查看完整正文');
                         if(hit.source==='name')link.append(el('span','awm-preset-name-label','名称 · '));
                         mmPresetHighlight(link,mmPresetSnippet(prompt[hit.source],hit),text);
@@ -1897,23 +1919,41 @@
         };
         q('search').oninput=()=>{hostWindow.clearTimeout(timer);if(!keyword())search();else timer=hostWindow.setTimeout(search,100);};
         q('scope').onchange=search;
-        q('back').onclick=()=>{viewId=null;marks=[];q('view').hidden=true;q('results').hidden=false;q('results').scrollTop=resultScroll;};
+        q('back').onclick=()=>{viewId=null;marks=[];q('view').hidden=true;q('results').hidden=false;q('results').scrollTop=resultScroll;q('results').focus({preventScroll:true});};
         q('prev').onclick=()=>jump(position-1);q('next').onclick=()=>jump(position+1);
-        q('close').onclick=()=>dialog.close();
+        const closeSearch=()=>{restoreOnClose=dialog.contains(root.activeElement);dialog.close();};
+        q('close').onclick=closeSearch;
+        dialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();closeSearch();}});
         const context=hostWindow.SillyTavern?.getContext?.(),event=context?.eventTypes?.OAI_PRESET_CHANGED_AFTER||context?.event_types?.OAI_PRESET_CHANGED_AFTER;
-        const changed=()=>{if(!alive())return;if(viewId!==null)showEntry(viewId,position);else search();};
+        const changed=()=>{if(!alive())return;if(viewId!==null)showEntry(viewId,position,false);else search();};
         if(event)context.eventSource?.on?.(event,changed);
+        let editTimer=null;
+        const edited=event=>{
+            const target=event.target;
+            if(dialog.contains(target)||!target.closest?.('#openai_settings,#completion_prompt_manager,#quick-edit-container,#completion_prompt_manager_popup'))return;
+            hostWindow.clearTimeout(editTimer);editTimer=hostWindow.setTimeout(changed,100);
+        };
+        const handoff=event=>{
+            if(!dialog.contains(event.relatedTarget))return;
+            const state=mmPresetFocusState(event.target);
+            if(state){focus=state;event.stopImmediatePropagation();}
+        };
+        for(const type of ['input','change','click'])root.addEventListener(type,edited,true);
+        for(const type of ['blur','focusout'])root.addEventListener(type,handoff,true);
         dialog.addEventListener('close',()=>{
+            hostWindow.clearTimeout(editTimer);
+            for(const type of ['input','change','click'])root.removeEventListener(type,edited,true);
+            for(const type of ['blur','focusout'])root.removeEventListener(type,handoff,true);
             hostWindow.clearTimeout(timer);
             if(event){const off=context.eventSource?.removeListener||context.eventSource?.off;off?.call(context.eventSource,event,changed);}
             dialog.remove();marks=[];
-            if(focus?.field.isConnected)mmPresetWithoutBlur(focus,()=>{
+            if(restoreOnClose&&focus?.field.isConnected)mmPresetWithoutBlur(focus,()=>{
                 focus.field.focus({preventScroll:true});
                 if(typeof focus.start==='number'&&typeof focus.field.setSelectionRange==='function')focus.field.setSelectionRange(focus.start,focus.end,focus.direction||'none');
                 focus.field.scrollTop=focus.scrollTop;focus.field.scrollLeft=focus.scrollLeft;
             });
         },{once:true});
-        mmPresetWithoutBlur(focus,()=>{dialog.showModal();mmToolDialogBind(dialog);q('search').focus({preventScroll:true});});
+        mmPresetWithoutBlur(focus,()=>{dialog.show();mmToolDialogBind(dialog);q('search').focus({preventScroll:true});});
         native=await mmPresetNative();ready=true;search();
     }
     function mmPresetSearchAttach() {
@@ -2155,7 +2195,7 @@
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V9.0 isolated backup cleaner.
+    // END V9.1 isolated backup cleaner.
 
     function bindExtensionSettings(main) {
         mmBackupBind(main);
@@ -2644,7 +2684,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '9.0', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '9.1', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4298,7 +4338,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V9.0 loaded');
+        console.log('[鲜虾鱼板面] V9.1 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
