@@ -1323,20 +1323,22 @@
         while(j<b.length)newChanged.add(j++);
         return {oldChanged,newChanged};
     }
-    function awmCompareStyle(incoming,matches,index,total) {
+    function awmCompareStyle(incoming,matches,index,total,unmatched=false) {
         return new Promise(resolve=>{
             const panel=root.getElementById(PANEL_ID),layer=root.createElement('div');layer.id='awm-style-compare';
             layer.style.cssText='position:absolute;inset:0;z-index:50;padding:12px;display:flex;background:#0006';
             layer.innerHTML=`<div class="awm-compare-box"><div>对比文风 ${index+1} / ${total}</div><select aria-label="匹配的已有文风"></select><div class="awm-compare-summary" role="status"></div><div class="awm-compare-cols"><section><b data-old-title></b><pre data-old-content></pre></section><section><b data-new-title></b><pre data-new-content></pre></section></div><div class="awm-compare-actions"><button class="awm-btn" data-choice="old">保留旧版</button><button class="awm-btn" data-choice="new">仅替换正文</button><button class="awm-btn" data-choice="skip">跳过此条</button><span style="font-size:12px">名字、作者、标签、备注保持原样</span></div></div>`;
-            const select=layer.querySelector('select');matches.forEach(s=>{const o=root.createElement('option');o.value=s.id;o.textContent=s.name;select.appendChild(o)});select.hidden=matches.length===1;
+            const select=layer.querySelector('select');if(unmatched){const o=root.createElement('option');o.value='';o.textContent='未匹配到旧文风：新增，或选择要替换的旧文风';select.appendChild(o);}matches.forEach(s=>{const o=root.createElement('option');o.value=s.id;o.textContent=s.name;select.appendChild(o)});select.hidden=!unmatched&&matches.length===1;
             const format=s=>String(s.content||'');
             const paint=(node,lines,changed,kind)=>{
                 node.innerHTML=lines.map((line,i)=>changed.has(i)?'<span class="awm-diff-'+kind+'">'+esc(line||' ')+'</span>':esc(line||' ')).join('\n');
             };
             const draw=()=>{
-                const old=matches.find(x=>x.id===select.value)||matches[0],oldText=format(old),newText=format(incoming);
+                const old=matches.find(x=>x.id===select.value),oldText=old?format(old):'',newText=format(incoming);
+                layer.querySelector('[data-choice=new]').textContent=old?'仅替换正文':'导入为新文风';
+                layer.querySelector('[data-choice=old]').hidden=!old;
                 const diff=awmStyleDiff(oldText,newText);
-                layer.querySelector('[data-old-title]').textContent='旧版 · '+old.name;
+                layer.querySelector('[data-old-title]').textContent=old?'旧版 · '+old.name:'未选择旧文风';
                 layer.querySelector('[data-new-title]').textContent='新版 · '+incoming.name;
                 layer.querySelector('.awm-compare-summary').textContent=diff.oldChanged.size||diff.newChanged.size
                     ? '旧版变化 '+diff.oldChanged.size+' 行 · 新版变化 '+diff.newChanged.size+' 行（着色处）'
@@ -1348,18 +1350,35 @@
             let answered=false;layer.querySelectorAll('[data-choice]').forEach(b=>b.onclick=event=>{if(answered||event.detail>1)return;answered=true;event.stopPropagation();const id=select.value;layer.remove();resolve({choice:b.dataset.choice,id})});panel.appendChild(layer);awmFixContrast();
         });
     }
+    let awmStyleImportBusy=false;
     async function awmImportStyles(candidates) {
-        const next=clone(load());let added=0,updated=0,skipped=0;
-        for(let i=0;i<candidates.length;i++){
-            const incoming=awmPrepareStyle(candidates[i]);
-            const matches=awmStyleMatches(next.styles,incoming.name);
-            if(!matches.length){next.styles.push({...incoming,id:uid('style')});added++;continue;}
-            const answer=await awmCompareStyle(incoming,matches,i,candidates.length);
-            if(answer.choice==='new'){const old=next.styles.find(s=>s.id===answer.id);if(old){old.content=incoming.content;updated++;}}
-            else {skipped++;}
-            await new Promise(resolve=>hostWindow.requestAnimationFrame(resolve));
-        }
-        if(added||updated)save(next);render('styles');toast('导入完成：新增 '+added+'，正文更新 '+updated+'，保留／跳过 '+skipped,'success');
+        if(awmStyleImportBusy){toast('当前导入尚未完成','warning');return;}
+        awmStyleImportBusy=true;
+        const next=clone(load());let added=0,updated=0,skipped=0,identical=0;
+        const batch=uid('import');
+        const log=(status,details)=>mmLog('styleImport','styles',status,'',undefined,{batch,...details});
+        log('started',{total:candidates.length});
+        try{
+            for(let i=0;i<candidates.length;i++){
+                const incoming=awmPrepareStyle(candidates[i]);
+                const matches=awmStyleMatches(next.styles,incoming.name);
+                const same=next.styles.find(s=>String(s.content||'')===incoming.content);
+                if(same){identical++;log('identical-skipped',{index:i+1,total:candidates.length,matchedId:same.id});continue;}
+                log('review',{index:i+1,total:candidates.length,matchCount:matches.length,matchedIds:matches.map(s=>s.id)});
+                const answer=await awmCompareStyle(incoming,matches.length?matches:next.styles,i,candidates.length,!matches.length);
+                if(answer.choice==='new'){
+                    const old=next.styles.find(s=>s.id===answer.id);
+                    if(old){old.content=incoming.content;updated++;log('body-replaced',{index:i+1,matchedId:old.id});}
+                    else if(!answer.id){next.styles.push({...incoming,id:uid('style')});added++;log('added',{index:i+1});}
+                    else throw Error('所选旧文风不存在');
+                }else{skipped++;log('skipped',{index:i+1,choice:answer.choice});}
+                await new Promise(resolve=>hostWindow.requestAnimationFrame(resolve));
+            }
+            if(added||updated)save(next);
+            render('styles');log('completed',{added,updated,skipped,identical});
+            toast('导入完成：新增 '+added+'，正文更新 '+updated+'，跳过 '+skipped+'，正文相同 '+identical,'success');
+        }catch(error){log('failed',{message:error.message});throw error;}
+        finally{awmStyleImportBusy=false;}
     }
     function awmTagTone(tag){return /^@/.test(tag.trim())?'red':tag.trim().toUpperCase()==='NSFW'?'yellow':'';}
     function awmFixContrast() {
@@ -1391,7 +1410,8 @@
         #${PANEL_ID} .awm-compare-summary{font-size:12px;opacity:.84}
         #${PANEL_ID} .awm-diff-old{background:#f9d7d2;color:#5b1f1f;box-decoration-break:clone}
         #${PANEL_ID} .awm-diff-new{background:#d5efd8;color:#153f23;box-decoration-break:clone}
-        .awm-compare-box{container-type:inline-size;width:100%;min-height:0;display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:10px;background:var(--awm-safe-bg);color:var(--awm-safe-ink)}
+        .awm-compare-box{container-type:inline-size;width:100%;min-width:0;min-height:0;display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:10px;background:var(--awm-safe-bg);color:var(--awm-safe-ink)}
+        .awm-compare-box select{width:100%;max-width:100%;min-width:0}.awm-compare-cols b{overflow-wrap:anywhere}
         .awm-compare-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0;overflow:auto}.awm-compare-cols section{display:flex;flex-direction:column;min-height:0;min-width:0}.awm-compare-cols pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;min-height:0}.awm-compare-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         @container(max-width:680px){.awm-compare-cols{grid-template-columns:1fr;grid-template-rows:1fr 1fr}}
         `;panel.appendChild(style);
@@ -1427,8 +1447,8 @@
             </div>
           </div>
           
-          <div class="awm-extension-actions awm-backup-actions"><button class="menu_button" id="awmBackupManual" type="button">手动删除</button><button class="menu_button" id="awmBackupClean" type="button">立即清理</button></div>
-          <div id="awmBackupConfirm" class="awm-backup-confirm" hidden>
+          <div class="awm-extension-actions awm-backup-actions"><button class="menu_button" id="awmBackupManual" type="button">手动删除</button><button class="menu_button" id="awmBackupScan" type="button">检查备份</button><button class="menu_button" id="awmBackupClean" type="button">立即清理</button></div>
+          <p id="awmBackupPanelStatus" class="awm-backup-status" role="status"></p><div id="awmBackupConfirm" class="awm-backup-confirm" hidden>
             <p id="awmBackupConfirmMessage"></p>
             <div class="awm-extension-actions"><button class="menu_button" id="awmBackupConfirmCancel" data-backup-confirm type="button">取消</button><button class="menu_button" id="awmBackupConfirmAccept" data-backup-confirm type="button">确认清理</button></div>
           </div>
@@ -1442,8 +1462,8 @@
         bindDataSettings(main);
         mmBackupBind(main);
     }
-    // BEGIN V9.5 isolated backup cleaner.
-    const MM_BACKUP_DEFAULT = { enabled: true, retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
+    // BEGIN V9.6 isolated backup cleaner.
+    const MM_BACKUP_DEFAULT = { enabled: true, retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0, lastAutomaticRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
 
@@ -1515,11 +1535,31 @@
         if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
     }
 
-    // V9.5: retired copies stay in place until the shared retention expires.
+    // V9.6: retired copies stay in place until the shared retention expires.
     const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
     function mmRetiredLocal(key) {
         try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
         catch (_) { return false; }
+    }
+    async function mmContentDigest(raw){
+        const bytes=new TextEncoder().encode(raw);
+        if(hostWindow.crypto?.subtle?.digest){
+            try{return Array.from(new Uint8Array(await hostWindow.crypto.subtle.digest('SHA-256',bytes)),x=>x.toString(16).padStart(2,'0')).join('');}catch{}
+        }
+        const k=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+        const h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+        const data=new Uint8Array(Math.ceil((bytes.length+9)/64)*64);data.set(bytes);data[bytes.length]=128;
+        const view=new DataView(data.buffer),bits=bytes.length*8;
+        view.setUint32(data.length-8,Math.floor(bits/4294967296));view.setUint32(data.length-4,bits>>>0);
+        const w=new Uint32Array(64),r=(x,n)=>(x>>>n)|(x<<(32-n));
+        for(let offset=0;offset<data.length;offset+=64){
+            for(let i=0;i<16;i++)w[i]=view.getUint32(offset+i*4);
+            for(let i=16;i<64;i++){const a=w[i-15],b=w[i-2];w[i]=(r(a,7)^r(a,18)^(a>>>3))+w[i-16]+(r(b,17)^r(b,19)^(b>>>10))+w[i-7];}
+            let [a,b,c,d,e,f,g,j]=h;
+            for(let i=0;i<64;i++){const t1=(j+(r(e,6)^r(e,11)^r(e,25))+((e&f)^(~e&g))+k[i]+w[i])>>>0,t2=((r(a,2)^r(a,13)^r(a,22))+((a&b)^(a&c)^(b&c)))>>>0;j=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;}
+            [a,b,c,d,e,f,g,j].forEach((v,i)=>h[i]=(h[i]+v)>>>0);
+        }
+        return h.map(x=>x.toString(16).padStart(8,'0')).join('');
     }
     async function mmRetiredCleanup(retention) {
         const cutoff=mmBackupCutoff(retention);
@@ -1540,7 +1580,7 @@
             {store:local, keys:[ID,'ame-style-management-v03',MM_LOCAL_KEY,...domains.map(x=>'鲜虾鱼板面.v2.'+x),...domains.map(x=>'鲜虾鱼板面.unsaved.v84.'+x)]},
             {store:account, keys:domains.map(x=>'鲜虾鱼板面.v2.'+x).concat('ame-style-management-v05_backup_preferences_v1')}
         ];
-        const digest=async raw=>Array.from(new Uint8Array(await hostWindow.crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)))).map(x=>x.toString(16).padStart(2,'0')).join('');
+        const digest=mmContentDigest;
         let removed=0;
         for(const plan of plans){
             const rawLedger=plan.store===account?server.accountStorage?.[MM_RETIRED_KEY]:local.getItem(MM_RETIRED_KEY);
@@ -1664,7 +1704,10 @@
         const list = await (await mmBackupFetch('/api/backups/chat/get')).json();
         if (!Array.isArray(list)) throw new Error('备份列表格式异常');
         const result = { files: [], bytes: 0, total: 0, skipped: 0, empty: 0 };
-        for (const item of list) {
+        let scanIndex=0,checked=0;
+        mmLog('backupCleaner','scan','listed','',undefined,{count:list.length});
+        const worker=async()=>{while(scanIndex<list.length&&!mmBackupStopped){
+            const item=list[scanIndex++];
             // Never pass settings backups, paths or arbitrary file names to deletion.
             const name = String(item?.file_name || '');
             if (!name || /[/\\]/.test(name) || name.includes('..')) continue;
@@ -1679,12 +1722,19 @@
             }
             if(reason){const size=mmBackupSize(item);result.files.push({name,size,reason});result.bytes+=size;}
             else if(!time)result.skipped++;
-        }
+            checked++;mmBackupStatus('检查备份：'+checked+' / '+list.length);
+        }};
+        await Promise.all(Array.from({length:Math.min(4,list.length)},worker));
         return result;
     }
+    let mmBackupPending=null;
+    function mmBackupIdleStatus(){
+        const prefs=mmBackupSettings();
+        if(mmBackupAutoEnabled())return prefs.lastAutomaticRun?'上次自动清理：'+new Date(prefs.lastAutomaticRun).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'尚未自动清理';
+        return mmBackupPending&&mmBackupPending.retention===prefs.retention?'待清理备份：'+mmBackupPending.count+' 个 · '+mmBackupFormat(mmBackupPending.bytes):'尚未检查';
+    }
     function mmBackupStatus(message) {
-        const node = root.getElementById('awmBackupStatus');
-        if (node) node.textContent = message;
+        root.querySelectorAll('#awmBackupStatus,#awmBackupPanelStatus').forEach(node=>node.textContent=message);
     }
     function mmBackupSetBusy(busy, action) {
         const toggle=root.getElementById('awmBackupEnabled');if(toggle)toggle.disabled=busy;
@@ -1731,13 +1781,17 @@
                 catch(error){mmLog('retiredCopies','clean','failed',error.message);toast(error.message,'warning');}
             }
             const scan = await mmBackupScan(settings.retention);
+            mmBackupPending={retention:settings.retention,count:scan.files.length,bytes:scan.bytes};
+            mmLog('backupCleaner','scan','completed','',undefined,{automatic,total:scan.total,eligible:scan.files.length,bytes:scan.bytes,skipped:scan.skipped});
             if (mmBackupStopped || (automatic&&!mmBackupAutoEnabled())) return;
             if (action === 'scan') {
-                mmBackupStatus('共 ' + scan.total + ' 个聊天备份，过期 ' + scan.files.length + ' 个，约 ' + mmBackupFormat(scan.bytes) + (scan.skipped ? '；跳过 ' + scan.skipped + ' 个时间不明的备份' : ''));
+                mmBackupStatus('待清理备份：'+scan.files.length+' 个 · '+mmBackupFormat(scan.bytes));
                 mmLog('backupCleaner', 'scan', 'completed', '', undefined, { total: scan.total, expired: scan.files.length, bytes: scan.bytes, skipped: scan.skipped });
                 return;
             }
-            if (!scan.files.length) { mmBackupStatus('没有需要清理的备份'); return; }
+            if (!scan.files.length) {
+                if(automatic){try{await mmBackupPersist({lastAutomaticRun:Date.now()});}catch(error){mmLog('backupPreferences','lastAutomaticRun','failed',error.message);}}
+                mmBackupStatus(mmBackupIdleStatus());mmLog('backupCleaner','clean','completed','',undefined,{automatic,deleted:0});return; }
             if (!automatic && !await mmBackupConfirm(scan)) { mmBackupStatus('已取消清理'); return; }
             if (mmBackupStopped) return;
             let index = 0, deleted = 0, expired = 0, empty = 0, freed = 0, failed = 0;
@@ -1756,9 +1810,11 @@
             const result = (automatic ? '自动清理掉 '+(counts||'备份 0 个') : '已清理 '+deleted+' 个备份') + '，释放 '+mmBackupFormat(freed)+' 空间' + (failed ? '；失败 '+failed+' 个，可重新扫描' : '');
             mmBackupStatus(result+(mmBackupNativeLimit?'；当前酒馆缺少设置备份删除接口，仅处理聊天备份':''));
             mmLog('backupCleaner', 'clean', failed ? 'partial' : 'completed', '', undefined, { automatic, retention:settings.retention, deleted, expired, empty, freed, failed });
-            try { await mmBackupPersist({ lastRun: Date.now() }); }
+            try { await mmBackupPersist({ lastRun: Date.now(),...(automatic?{lastAutomaticRun:Date.now()}:{}) }); }
             catch (error) { mmLog('backupPreferences','lastRun','failed',error.message); }
-            if (automatic) toast(result, failed ? 'warning' : 'success');
+            mmBackupPending={retention:settings.retention,count:failed,bytes:Math.max(0,scan.bytes-freed)};
+            mmBackupStatus(mmBackupIdleStatus());
+            toast(result, failed ? 'warning' : 'success');
         } catch (error) {
             mmBackupStatus('备份' + (action === 'scan' ? '扫描' : '清理') + '失败：' + error.message);
             mmLog('backupCleaner', action, 'failed', error.message);
@@ -2268,7 +2324,8 @@
     async function mmBackupBind(main) {
         const section = main.querySelector('#awmBackupSection');
         if (!section) return;
-        const controls=[...section.querySelectorAll('input,select,button')];controls.forEach(x=>x.disabled=true);
+        section.querySelector('#awmBackupManual').onclick=mmBackupOpen;
+        const controls=[...section.querySelectorAll('input,select,button:not(#awmBackupManual)')];controls.forEach(x=>x.disabled=true);
         const loading=root.createElement('option');loading.value='';loading.textContent='读取中…';loading.selected=true;
         section.querySelector('#awmBackupRetention').prepend(loading);section.querySelector('#awmBackupRetention').value='';
         mmBackupStatus('读取清理设置…');
@@ -2294,19 +2351,20 @@
                 try {
                     await mmBackupPersist({ ...(id==='awmBackupRetention'?{enabled:q('awmBackupRetention').value!=='off'}:{}), retention: q('awmBackupRetention').value, schedule: q('awmBackupSchedule').value, dailyTime: q('awmBackupDailyTime').value || '04:00', weeklyDay: q('awmBackupWeeklyDay').value, weeklyTime: q('awmBackupWeeklyTime').value || '04:00' });
                     if(sequence!==saveSequence)return;
-                    mmBackupSchedule();mmBackupSyncToggle();mmBackupSaveStatus('设置已保存');
+                    mmBackupPending=null;mmBackupSchedule();mmBackupSyncToggle();mmBackupStatus(mmBackupIdleStatus());mmBackupSaveStatus('设置已保存');
                 } catch (error) { if(sequence===saveSequence){mmBackupSaveStatus('保存失败');mmBackupStatus('设置保存失败：'+error.message);}mmLog('backupPreferences','settings','failed',error); }
             };
             q(id).onchange = persist;
 
         });
         q('awmBackupManual').onclick = mmBackupOpen;
+        q('awmBackupScan').onclick = ()=>mmBackupRun('scan');
         q('awmBackupClean').onclick = ()=>mmBackupRun('clean');
         sync(); mmBackupSyncToggle();mmBackupSetBusy(mmBackupBusy);
-        mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
+        if(!mmBackupBusy)mmBackupStatus(mmBackupIdleStatus());
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V9.5 isolated backup cleaner.
+    // END V9.6 isolated backup cleaner.
 
     const MM_FEATURE_KEY='鲜虾鱼板面.features.v1';
     function mmFeatures() {
@@ -2352,14 +2410,14 @@
             mmSetLauncherVisible(true);launcherToggle.checked=true;
         };
         const toggle=main.querySelector('#awmBackupEnabled');toggle.disabled=true;
-        mmBackupReadPreferences().then(()=>{toggle.disabled=false;mmBackupSyncToggle();mmBackupStatus(mmBackupSettings().enabled&&mmBackupSettings().retention!=='off'?'尚未执行清理':'自动清理已关闭');}).catch(error=>mmBackupStatus('清理设置读取失败：'+error.message));
+        mmBackupReadPreferences().then(()=>{toggle.disabled=false;mmBackupSyncToggle();if(!mmBackupBusy)mmBackupStatus(mmBackupIdleStatus());}).catch(error=>mmBackupStatus('清理设置读取失败：'+error.message));
         toggle.onchange=async()=>{
             const previous=mmBackupSettings();toggle.disabled=true;
             const enabled=toggle.checked;
             hostWindow.clearTimeout(mmBackupTimer);
             try {
                 await mmBackupPersist({enabled,retention:enabled&&previous.retention==='off'?'7d':previous.retention});
-                mmBackupSchedule();mmBackupStatus(enabled?'自动清理已开启':'自动清理已关闭');
+                mmBackupSchedule();mmBackupStatus(mmBackupIdleStatus());
                 const select=root.getElementById('awmBackupRetention');if(select)select.value=mmBackupSettings().retention;
             } catch(error){mmBackupStatus('设置保存失败：'+error.message);}
             finally{toggle.disabled=false;mmBackupSyncToggle();}
@@ -2843,7 +2901,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '9.5', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '9.6', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4506,7 +4564,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V9.5 loaded');
+        console.log('[鲜虾鱼板面] V9.6 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
