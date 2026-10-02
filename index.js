@@ -298,6 +298,7 @@
         mmTrackPanelActions(panel);
         awmEnhanceStyleUI(panel);
         panel.querySelector('#awmClose').onclick = close;
+        enableDrag();
         panel.querySelectorAll('[data-page]').forEach(b => {
             b.onclick = () => {
                 if(mmWriteLocked()||!mmPageEnabled(b.dataset.page))return;
@@ -1134,7 +1135,7 @@
                 在「${esc(fileName)}」里找到 <b>${candidates.length}</b> 条，勾选要导入的文风（少于 2000 字的默认不勾选）：
             </div>
             <div style="margin-bottom:6px;flex:0 0 auto;display:flex;align-items:center;min-height:30px">
-                <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.2"><input type="checkbox" id="jsonSelectAll" style="flex:0 0 auto;margin:0;width:18px;height:18px"> <span>全选 / 全不选</span></label>
+                <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.2"><input type="checkbox" id="jsonSelectAll" style="flex:0 0 auto;margin:0;width:18px;height:18px"> <span>全选 / 全不选</span></label><span style="margin-left:auto;font-size:.8em;opacity:.7">沿勾选栏拖动连选</span>
             </div>
             <div id="jsonImportList" style="flex:1 1 auto;min-height:0;overflow:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:7px;padding:6px"></div>
             <div style="margin-top:10px;text-align:right;flex:0 0 auto">
@@ -1155,7 +1156,34 @@
         panel.appendChild(layer);
 
         const checks = () => [...box.querySelectorAll('.json-pick')];
-        box.querySelector('#jsonSelectAll').onchange = e => checks().forEach(x => x.checked = e.target.checked);
+        const all=box.querySelector('#jsonSelectAll');
+        const sync=()=>{const items=checks(),n=items.filter(x=>x.checked).length;all.checked=n===items.length;all.indeterminate=n>0&&n<items.length;};
+        all.onchange = e => {checks().forEach(x => x.checked = e.target.checked);sync();};
+        let anchor=null,gesture=null,suppressClick=false;
+        checks().forEach(x=>{x.style.cssText='flex:0 0 24px;width:24px;height:24px;margin:0;touch-action:none';});
+        const range=(from,to,value)=>{const items=checks();for(let i=Math.min(from,to);i<=Math.max(from,to);i++)items[i].checked=value;sync();};
+        list.addEventListener('pointerdown',e=>{
+            const input=e.target.closest('.json-pick');if(!input||e.button!==0)return;
+            const index=Number(input.dataset.i);e.preventDefault();suppressClick=true;
+            gesture={id:e.pointerId,from:e.shiftKey&&anchor!==null?anchor:index,to:index,value:!input.checked};
+            range(gesture.from,index,gesture.value);anchor=index;list.setPointerCapture(e.pointerId);
+        });
+        list.addEventListener('pointermove',e=>{
+            if(!gesture||e.pointerId!==gesture.id)return;e.preventDefault();
+            const bounds=list.getBoundingClientRect();
+            if(e.clientY<bounds.top+28)list.scrollTop-=18;else if(e.clientY>bounds.bottom-28)list.scrollTop+=18;
+            const rows=checks();let nearest=gesture.to,distance=Infinity;
+            rows.forEach((input,i)=>{const r=input.getBoundingClientRect(),d=Math.abs(e.clientY-r.top-r.height/2);if(d<distance){distance=d;nearest=i;}});
+            range(gesture.to,nearest,gesture.value);gesture.to=nearest;
+        });
+        const end=e=>{if(!gesture||e.pointerId!==gesture.id)return;gesture=null;if(list.hasPointerCapture(e.pointerId))list.releasePointerCapture(e.pointerId);hostWindow.setTimeout(()=>suppressClick=false,0);};
+        list.addEventListener('pointerup',end);list.addEventListener('pointercancel',end);
+        list.addEventListener('click',e=>{if(suppressClick){e.preventDefault();e.stopPropagation();return;}
+            const input=e.target.closest('label')?.querySelector('.json-pick');if(!input)return;
+            if(e.target!==input)return;
+            const index=Number(input.dataset.i);if(e.shiftKey&&anchor!==null)range(anchor,index,input.checked);anchor=index;sync();
+        });
+        list.addEventListener('change',sync);sync();
         box.querySelector('#jsonImportCancel').onclick = () => layer.remove();
         box.querySelector('#jsonImportOk').onclick = () => {
             const chosenIdx = checks().filter(x => x.checked).map(x => Number(x.dataset.i));
@@ -1299,9 +1327,9 @@
         return new Promise(resolve=>{
             const panel=root.getElementById(PANEL_ID),layer=root.createElement('div');layer.id='awm-style-compare';
             layer.style.cssText='position:absolute;inset:0;z-index:50;padding:12px;display:flex;background:#0006';
-            layer.innerHTML=`<div class="awm-compare-box"><div>对比文风 ${index+1} / ${total}</div><select aria-label="匹配的已有文风"></select><div class="awm-compare-summary" role="status"></div><div class="awm-compare-cols"><section><b data-old-title></b><pre data-old-content></pre></section><section><b data-new-title></b><pre data-new-content></pre></section></div><div class="awm-compare-actions"><button class="awm-btn" data-choice="old">旧版</button><button class="awm-btn" data-choice="new">新版</button><button class="awm-btn" data-choice="both" title="保留新旧两版">跳过</button><span style="font-size:12px">跳过：两版都保留</span></div></div>`;
+            layer.innerHTML=`<div class="awm-compare-box"><div>对比文风 ${index+1} / ${total}</div><select aria-label="匹配的已有文风"></select><div class="awm-compare-summary" role="status"></div><div class="awm-compare-cols"><section><b data-old-title></b><pre data-old-content></pre></section><section><b data-new-title></b><pre data-new-content></pre></section></div><div class="awm-compare-actions"><button class="awm-btn" data-choice="old">保留旧版</button><button class="awm-btn" data-choice="new">仅替换正文</button><button class="awm-btn" data-choice="skip">跳过此条</button><span style="font-size:12px">名字、作者、标签、备注保持原样</span></div></div>`;
             const select=layer.querySelector('select');matches.forEach(s=>{const o=root.createElement('option');o.value=s.id;o.textContent=s.name;select.appendChild(o)});select.hidden=matches.length===1;
-            const format=s=>'作者：'+(s.author||'（无）')+'\n标签：'+(s.tags||[]).join('、')+'\n\n'+s.content+(s.note?'\n\n备注：\n'+s.note:'');
+            const format=s=>String(s.content||'');
             const paint=(node,lines,changed,kind)=>{
                 node.innerHTML=lines.map((line,i)=>changed.has(i)?'<span class="awm-diff-'+kind+'">'+esc(line||' ')+'</span>':esc(line||' ')).join('\n');
             };
@@ -1317,20 +1345,21 @@
                 paint(layer.querySelector('[data-new-content]'),newText.split('\n'),diff.newChanged,'new');
             };
             select.onchange=draw;draw();
-            layer.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{const id=select.value;layer.remove();resolve({choice:b.dataset.choice,id})});panel.appendChild(layer);awmFixContrast();
+            let answered=false;layer.querySelectorAll('[data-choice]').forEach(b=>b.onclick=event=>{if(answered||event.detail>1)return;answered=true;event.stopPropagation();const id=select.value;layer.remove();resolve({choice:b.dataset.choice,id})});panel.appendChild(layer);awmFixContrast();
         });
     }
     async function awmImportStyles(candidates) {
-        const next=clone(load());let added=0,updated=0;
+        const next=clone(load());let added=0,updated=0,skipped=0;
         for(let i=0;i<candidates.length;i++){
             const incoming=awmPrepareStyle(candidates[i]);
             const matches=awmStyleMatches(next.styles,incoming.name);
             if(!matches.length){next.styles.push({...incoming,id:uid('style')});added++;continue;}
             const answer=await awmCompareStyle(incoming,matches,i,candidates.length);
-            if(answer.choice==='new'){const old=next.styles.find(s=>s.id===answer.id);Object.assign(old,incoming,{id:old.id});updated++;}
-            else if(answer.choice==='both'){next.styles.push({...incoming,id:uid('style')});added++;}
+            if(answer.choice==='new'){const old=next.styles.find(s=>s.id===answer.id);if(old){old.content=incoming.content;updated++;}}
+            else {skipped++;}
+            await new Promise(resolve=>hostWindow.requestAnimationFrame(resolve));
         }
-        save(next);render('styles');toast('导入完成：新增 '+added+'，更新 '+updated,'success');
+        if(added||updated)save(next);render('styles');toast('导入完成：新增 '+added+'，正文更新 '+updated+'，保留／跳过 '+skipped,'success');
     }
     function awmTagTone(tag){return /^@/.test(tag.trim())?'red':tag.trim().toUpperCase()==='NSFW'?'yellow':'';}
     function awmFixContrast() {
@@ -1355,6 +1384,10 @@
         #${PANEL_ID} .awm-tag[data-tone="yellow"]{background:#ffe184!important;color:#513800!important}
         #${PANEL_ID} .awm-tag[data-tone="red"]{background:#f7b5b5!important;color:#6e1111!important}
         #${PANEL_ID} [hidden]{display:none!important}
+        #${PANEL_ID} .awm-folder-name{font-size:1.08em;font-weight:700}
+        #${PANEL_ID} .awm-folder>summary .awm-meta{font-size:.78em;font-weight:400}
+        #${PANEL_ID} .awm-details>summary>b{font-size:.94em;font-weight:500}
+        #${PANEL_ID} .awm-details .awm-count{font-size:.75em;font-weight:400}
         #${PANEL_ID} .awm-compare-summary{font-size:12px;opacity:.84}
         #${PANEL_ID} .awm-diff-old{background:#f9d7d2;color:#5b1f1f;box-decoration-break:clone}
         #${PANEL_ID} .awm-diff-new{background:#d5efd8;color:#153f23;box-decoration-break:clone}
@@ -1409,7 +1442,7 @@
         bindDataSettings(main);
         mmBackupBind(main);
     }
-    // BEGIN V9.4 isolated backup cleaner.
+    // BEGIN V9.5 isolated backup cleaner.
     const MM_BACKUP_DEFAULT = { enabled: true, retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
@@ -1418,7 +1451,11 @@
     const MM_BACKUP_PREF_KEY='鲜虾鱼板面.backupCleaner.v1';
     let mmBackupPrefs=null,mmBackupPrefsReading=null,mmBackupPrefsQueue=Promise.resolve(),mmBackupPrefsSequence=0;
     async function mmBackupServerSettings(){
-        const response=await mmSettingsFetch('/api/settings/get',{}),body=await response.json();
+        let timer;
+        const body=await Promise.race([
+            (async()=>{const response=await mmSettingsFetch('/api/settings/get',{});return response.json();})(),
+            new Promise((_,reject)=>{timer=hostWindow.setTimeout(()=>reject(Error('清理设置读取超时，请重新打开设置')),20000);})
+        ]).finally(()=>hostWindow.clearTimeout(timer));
         const settings=typeof body.settings==='string'?JSON.parse(body.settings):body.settings;
         if(!settings||typeof settings!=='object')throw Error('无法读取酒馆设置，清理未启动');
         return settings;
@@ -1478,7 +1515,7 @@
         if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
     }
 
-    // V9.4: retired copies stay in place until the shared retention expires.
+    // V9.5: retired copies stay in place until the shared retention expires.
     const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
     function mmRetiredLocal(key) {
         try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
@@ -2235,7 +2272,7 @@
         const loading=root.createElement('option');loading.value='';loading.textContent='读取中…';loading.selected=true;
         section.querySelector('#awmBackupRetention').prepend(loading);section.querySelector('#awmBackupRetention').value='';
         mmBackupStatus('读取清理设置…');
-        try{await mmBackupReadPreferences();}catch(error){loading.textContent='读取失败';mmBackupStatus('清理设置读取失败：'+error.message);return;}
+        try{await mmBackupReadPreferences();}catch(error){loading.textContent='读取失败，请重新打开';section.title=error.message;mmBackupStatus('清理设置读取失败：'+error.message);return;}
         if(!section.isConnected)return;loading.remove();controls.forEach(x=>x.disabled=false);
         const q = id => section.querySelector('#' + id), settings = mmBackupSettings();
         mmLog('backupPreferences', 'settings', 'restored', '', undefined, { retention: settings.retention, schedule: settings.schedule });
@@ -2269,7 +2306,7 @@
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V9.4 isolated backup cleaner.
+    // END V9.5 isolated backup cleaner.
 
     const MM_FEATURE_KEY='鲜虾鱼板面.features.v1';
     function mmFeatures() {
@@ -2806,7 +2843,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '9.4', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '9.5', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4199,6 +4236,14 @@
 #awm-panel-v03 .awm-layout-controls>*{max-width:100%}
 `;
         style.textContent += '.awm-mm-pending-tags{display:flex;align-items:center;gap:4px;flex:none}.awm-mm-pending-tags:empty{display:none}.awm-mm-pending-tags .awm-btn{flex:none;white-space:nowrap}';
+        style.textContent += `
+        #awm-panel-v03 .awm-head{min-width:0;flex-wrap:nowrap}
+        #awm-panel-v03 .awm-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+        #awm-panel-v03 .awm-head-nav{flex:0 1 auto;min-width:0;max-width:100%;flex-wrap:nowrap}
+        #awm-panel-v03 .awm-head-nav .awm-tabs{flex:0 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+        #awm-panel-v03 .awm-head-nav .awm-tab{flex:0 0 auto}
+        #awm-panel-v03 .awm-head-nav #awmClose{flex:0 0 auto}
+        `;
         root.head.appendChild(style);
     }
     function mmMountConfirm() {
@@ -4453,6 +4498,7 @@
         if(mmInitialized||!root.body)return;
         mmInitialized=true;
         addStyle();
+        mmAddStyle();
         makePanel();
         createMenuButton();
         mmCreateLauncher();
@@ -4460,7 +4506,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V9.4 loaded');
+        console.log('[鲜虾鱼板面] V9.5 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});

@@ -177,3 +177,6 @@
 #awmMain.awm-panel-settings .awm-backup-extra{margin-left:100px;display:flex;flex-wrap:wrap;gap:6px}
 #awmMain.awm-panel-settings .awm-backup-extra>*{flex:1 1 85px;width:0;min-width:0;max-width:100%}
 #awmMain.awm-panel-settings>.awm-extension-card{max-width:680px}
+
+#awm-extension-settings .awm-switch-track{box-sizing:border-box;min-width:42px;min-height:24px;border:1px solid var(--SmartThemeBorderColor);background:var(--black30a,var(--SmartThemeBlurTintColor))}
+#awm-extension-settings .awm-extension-toggle input:disabled+.awm-switch-track{opacity:.55;cursor:wait}
