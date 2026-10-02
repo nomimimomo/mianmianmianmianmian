@@ -339,7 +339,7 @@
         const zoomWidth = zoom > 0 && zoom < 1 ? vp.w * zoom : vp.w;
         const visibleWidth = Number.isFinite(frameWidth) && frameWidth > 0 ? Math.min(vp.w, frameWidth, zoomWidth) : Math.min(vp.w, zoomWidth);
         if (awmLayoutDevice() !== 'desktop' || visibleWidth > 800) return null;
-        const margin = Math.round(vp.w * .08);
+        const margin = vp.w * .02;
         return { left: vp.x + margin, width: Math.round(vp.w - margin * 2) };
     }
     function awmLayoutVerticalBand() {
@@ -361,7 +361,8 @@
     function awmLayoutConstrain(panel) {
         const vp = awmLayoutViewport(), band = awmLayoutVerticalBand();
         panel.style.boxSizing = 'border-box';
-        const maxWidth = Math.max(1, vp.w - 16), minWidth = Math.min(maxWidth, vp.w * .84);
+        const inset = vp.w * .02;
+        const maxWidth = Math.max(1, vp.w - inset * 2), minWidth = Math.min(maxWidth, 240);
         // Correct rendered dimensions as well as coordinates (themes may apply CSS zoom).
         for (let i = 0; i < 3; i++) {
             const rect = panel.getBoundingClientRect();
@@ -374,8 +375,8 @@
         }
         for (let i = 0; i < 3; i++) {
             const rect = panel.getBoundingClientRect();
-            const leftMin = Math.max(vp.x + 8, vp.x + vp.w - rect.width - vp.w * .08);
-            const leftMax = Math.min(vp.x + vp.w - rect.width - 8, vp.x + vp.w * .08);
+            const leftMin = vp.x + inset;
+            const leftMax = vp.x + vp.w - rect.width - inset;
             const left = Math.max(leftMin, Math.min(leftMax, rect.left));
             const top = Math.max(band.top, Math.min(band.bottom - rect.height, rect.top));
             const scaleX = rect.width / (parseFloat(hostWindow.getComputedStyle(panel).width) || rect.width) || 1;
@@ -404,10 +405,10 @@
         if (!panel || panel.style.display === 'none' || !value) return;
         const vp = awmLayoutViewport(), mobile = awmLayoutDevice() === 'mobile';
         if (mobile) panel.style.height = Math.round(Math.min(Math.max(220, vp.h - 16), Math.max(220, Math.min(vp.h - 16, +value.size || 620)))) + 'px';
-        else panel.style.width = (awmNarrowPanelWidth(vp)?.width || Math.round(Math.min(Math.max(220, vp.w - 16), Math.max(240, Math.min(vp.w - 16, +value.size || 680))))) + 'px';
+        else panel.style.width = Math.round(Math.min(vp.w - 16, Math.max(240, +value.size || 680))) + 'px';
         const band = awmLayoutFitHeight(panel);
         const rect = panel.getBoundingClientRect();
-        const left = awmNarrowPanelWidth(vp)?.left ?? vp.x + Math.max(0, Math.min(vp.w - rect.width, (+value.x || 0) * vp.w));
+        const left = vp.x + Math.max(0, Math.min(vp.w - rect.width, (+value.x || 0) * vp.w));
         const storedTop = vp.y + (+value.y || 0) * vp.h;
         const top = band ? (mobile ? Math.max(band.top, Math.min(band.bottom - rect.height, storedTop)) : band.top)
             : vp.y + Math.max(0, Math.min(vp.h - rect.height, (+value.y || 0) * vp.h));
@@ -1408,7 +1409,7 @@
         bindDataSettings(main);
         mmBackupBind(main);
     }
-    // BEGIN V9.3 isolated backup cleaner.
+    // BEGIN V9.4 isolated backup cleaner.
     const MM_BACKUP_DEFAULT = { enabled: true, retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
@@ -1477,7 +1478,7 @@
         if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
     }
 
-    // V9.3: retired copies stay in place until the shared retention expires.
+    // V9.4: retired copies stay in place until the shared retention expires.
     const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
     function mmRetiredLocal(key) {
         try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
@@ -2268,7 +2269,7 @@
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V9.3 isolated backup cleaner.
+    // END V9.4 isolated backup cleaner.
 
     const MM_FEATURE_KEY='鲜虾鱼板面.features.v1';
     function mmFeatures() {
@@ -2805,7 +2806,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '9.3', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '9.4', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4459,7 +4460,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V9.3 loaded');
+        console.log('[鲜虾鱼板面] V9.4 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
