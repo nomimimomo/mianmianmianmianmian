@@ -300,7 +300,7 @@
         panel.querySelector('#awmClose').onclick = close;
         panel.querySelectorAll('[data-page]').forEach(b => {
             b.onclick = () => {
-                if(mmWriteLocked())return;
+                if(mmWriteLocked()||!mmPageEnabled(b.dataset.page))return;
                 if (b.dataset.mmSide) {
                     if (root.getElementById('awmMian')) mmSetActive(b.dataset.mmSide);
                     else { mmRuntime.active = b.dataset.mmSide; render(b.dataset.page); }
@@ -673,6 +673,7 @@
         const host=root.getElementById('awmMian');
         const single=host?.dataset.mmFocus || (host?.classList.contains('awm-mm-narrow')?mmRuntime.active:'');
         root.querySelectorAll('#'+PANEL_ID+' .awm-tab').forEach(b=>{
+            b.hidden=!mmPageEnabled(b.dataset.page);
             b.classList.toggle('active',b.dataset.page===awmCurrentPage && (!b.dataset.mmSide || !single || b.dataset.mmSide===single));
         });
     }
@@ -680,6 +681,8 @@
         const main = root.getElementById('awmMain');
         if (!main) return;
         if (mmWriteLocked()) return;
+        if (!mmPageEnabled(page)) page='settings';
+        main.classList.remove('awm-panel-settings');
         if (root.getElementById('awmMian')) {
             mmPersistCurrent('char'); mmPersistCurrent('user');
             // A pending load cannot finish into a destroyed frame.
@@ -1372,14 +1375,41 @@
             <div class="awm-layout-controls">
                 <button class="awm-btn" id="awmLayoutLock" type="button"></button>
                 <select class="awm-select" id="awmLayoutSlot" aria-label="面板位置槽"><option value="1">位置 1</option><option value="2">位置 2</option><option value="3">位置 3</option></select>
-                <button class="awm-btn" id="awmLayoutSave" type="button">保存到此槽</button>
+                </div><div class="awm-layout-actions"><button class="awm-btn" id="awmLayoutSave" type="button">保存到此槽</button>
                 <button class="awm-btn" id="awmLayoutReset" type="button">恢复默认位置</button>
             </div>
         </section>`;
+        main.insertAdjacentHTML('beforeend', `<section class="awm-extension-card" aria-labelledby="awmStorageTitle">
+          <h3 id="awmStorageTitle">数据存储</h3>
+          <label class="awm-extension-line awm-storage-line"><span>存储位置</span><select id="awmStorageMode"><option value="tavern">酒馆（默认）</option><option value="browser">浏览器</option></select></label>
+          <div class="awm-extension-actions"><button class="menu_button" id="awmImportData" type="button">导入数据</button><button class="menu_button" id="awmExportData" type="button">导出数据</button><button class="menu_button" id="awmClearTavernData" type="button">清除鱼板面数据</button></div>
+        </section><section class="awm-extension-card" id="awmBackupSection" aria-labelledby="awmBackupTitle">
+          <div class="awm-backup-heading"><h3 id="awmBackupTitle">备份清理</h3><span id="awmBackupSaveStatus" role="status" aria-live="polite"></span></div>
+          <div class="awm-backup-fields">
+            <label class="awm-backup-field"><span>保留时间</span><select id="awmBackupRetention"><option value="off">不开启</option><option value="1d">1天</option><option value="7d">7天</option><option value="30d">30天</option><option value="3m">3个月</option><option value="6m">6个月</option><option value="1y">1年</option></select></label>
+            <div><label class="awm-backup-field"><span>清理时间</span><select id="awmBackupSchedule"><option value="startup">每次加载酒馆</option><option value="daily">每天</option><option value="weekly">每周</option></select></label>
+              <div class="awm-backup-extra" id="awmBackupDaily" hidden><input id="awmBackupDailyTime" type="time" aria-label="每日清理时刻" value="04:00"></div>
+              <div class="awm-backup-extra" id="awmBackupWeekly" hidden><select id="awmBackupWeeklyDay" aria-label="每周清理日期"><option value="0">周日</option><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option></select><input id="awmBackupWeeklyTime" type="time" aria-label="每周清理时刻" value="04:00"></div>
+            </div>
+          </div>
+          
+          <div class="awm-extension-actions awm-backup-actions"><button class="menu_button" id="awmBackupManual" type="button">手动删除</button><button class="menu_button" id="awmBackupClean" type="button">立即清理</button></div>
+          <div id="awmBackupConfirm" class="awm-backup-confirm" hidden>
+            <p id="awmBackupConfirmMessage"></p>
+            <div class="awm-extension-actions"><button class="menu_button" id="awmBackupConfirmCancel" data-backup-confirm type="button">取消</button><button class="menu_button" id="awmBackupConfirmAccept" data-backup-confirm type="button">确认清理</button></div>
+          </div>
+          
+        </section><section class="awm-extension-card" aria-labelledby="awmLogTitle">
+          <h3 id="awmLogTitle">诊断日志</h3>
+          <div class="awm-extension-actions"><button class="menu_button" id="awmExportMmLog" type="button">导出日志</button><button class="menu_button" id="awmClearMmLog" type="button">清空日志</button></div>
+        </section>`);
+        main.classList.add('awm-panel-settings');
         awmLayoutBindSettings(main);
+        bindDataSettings(main);
+        mmBackupBind(main);
     }
-    // BEGIN V9.2 isolated backup cleaner.
-    const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
+    // BEGIN V9.3 isolated backup cleaner.
+    const MM_BACKUP_DEFAULT = { enabled: true, retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
 
@@ -1436,7 +1466,7 @@
             while(true){
                 if(sequence!==mmBackupPrefsSequence)return;
                 const actual=mmBackupDecodePrefs(await mmBackupServerSettings());
-                if(actual&&Object.keys(MM_BACKUP_DEFAULT).every(key=>actual[key]===value[key]))break;
+                if(actual&&Object.keys(MM_BACKUP_DEFAULT).every(key=>({...MM_BACKUP_DEFAULT,...actual})[key]===value[key]))break;
                 if(Date.now()>=end)throw Error('酒馆尚未确认保存，请重试');
                 await new Promise(resolve=>hostWindow.setTimeout(resolve,pause));
                 pause=Math.min(4000,pause*2);
@@ -1447,7 +1477,7 @@
         if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
     }
 
-    // V9.2: retired copies stay in place until the shared retention expires.
+    // V9.3: retired copies stay in place until the shared retention expires.
     const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
     function mmRetiredLocal(key) {
         try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
@@ -1619,6 +1649,7 @@
         if (node) node.textContent = message;
     }
     function mmBackupSetBusy(busy, action) {
+        const toggle=root.getElementById('awmBackupEnabled');if(toggle)toggle.disabled=busy;
         const area = root.getElementById('awmBackupSection');
         if (!area) return;
         area.setAttribute('aria-busy', String(busy));
@@ -1649,7 +1680,7 @@
         });
     }
     async function mmBackupRun(action = 'clean', automatic = false) {
-        if (mmBackupBusy || mmBackupStopped) return;
+        if (mmBackupBusy || mmBackupStopped || (automatic&&!mmBackupAutoEnabled())) return;
         const settings = mmBackupSettings();
         if (mmBackupCutoff(settings.retention) === null) { if (!automatic) mmBackupStatus('请先选择保留时间，当前未开启清理'); return; }
         mmBackupBusy = true;
@@ -1662,7 +1693,7 @@
                 catch(error){mmLog('retiredCopies','clean','failed',error.message);toast(error.message,'warning');}
             }
             const scan = await mmBackupScan(settings.retention);
-            if (mmBackupStopped) return;
+            if (mmBackupStopped || (automatic&&!mmBackupAutoEnabled())) return;
             if (action === 'scan') {
                 mmBackupStatus('共 ' + scan.total + ' 个聊天备份，过期 ' + scan.files.length + ' 个，约 ' + mmBackupFormat(scan.bytes) + (scan.skipped ? '；跳过 ' + scan.skipped + ' 个时间不明的备份' : ''));
                 mmLog('backupCleaner', 'scan', 'completed', '', undefined, { total: scan.total, expired: scan.files.length, bytes: scan.bytes, skipped: scan.skipped });
@@ -1673,7 +1704,7 @@
             if (mmBackupStopped) return;
             let index = 0, deleted = 0, expired = 0, empty = 0, freed = 0, failed = 0;
             const worker = async () => {
-                while (index < scan.files.length && !mmBackupStopped) {
+                while (index < scan.files.length && !mmBackupStopped && (!automatic||mmBackupAutoEnabled())) {
                     const item = scan.files[index++];
                     try { await mmBackupFetch('/api/backups/chat/delete', { name: item.name }); deleted++; if(item.reason==='empty')empty++;else expired++; freed += item.size; }
                     catch (_) { failed++; }
@@ -1701,16 +1732,17 @@
             if (!mmBackupStopped) mmBackupSetBusy(false);
         }
     }
+    function mmBackupAutoEnabled(){const prefs=mmBackupSettings();return prefs.enabled!==false&&prefs.retention!=='off';}
     async function mmBackupSchedule(startup = false) {
         try {await mmBackupReadPreferences();}catch(error){mmLog('backupPreferences','settings','unavailable',error);return;}
         hostWindow.clearTimeout(mmBackupTimer);
         if (mmBackupStopped) return;
         const settings = mmBackupSettings();
-        if (mmBackupCutoff(settings.retention) === null) return;
+        if (settings.enabled===false || mmBackupCutoff(settings.retention) === null) return;
         if (settings.schedule === 'startup') {
             if (startup) {
                 const later=()=>{if(mmBackupStopped)return;mmBackupTimer=hostWindow.setTimeout(()=>{
-                    const run=()=>{if(!mmBackupStopped&&mmBackupSettings().schedule==='startup')mmBackupRun('clean',true);};
+                    const run=()=>{if(!mmBackupStopped&&mmBackupAutoEnabled()&&mmBackupSettings().schedule==='startup')mmBackupRun('clean',true);};
                     if(typeof hostWindow.requestIdleCallback==='function')hostWindow.requestIdleCallback(run,{timeout:5000});else run();
                 },10000);};
                 if(root.readyState==='complete')later();else hostWindow.addEventListener('load',later,{once:true});
@@ -1890,6 +1922,7 @@
         try{return action();}finally{root.removeEventListener('blur',stop,true);root.removeEventListener('focusout',stop,true);}
     }
     async function mmPresetSearchOpen() {
+        if(!mmFeatures().search)return;
         const existing=root.getElementById('awmPresetSearchDialog');
         if(existing){existing.querySelector('[data-search]')?.focus();return;}
         let focus=mmPresetFocusState(),restoreOnClose=false;
@@ -1996,6 +2029,7 @@
         native=await mmPresetNative();ready=true;search();
     }
     function mmPresetSearchAttach() {
+        if(!mmFeatures().search){root.getElementById('awmPresetSearchButton')?.remove();return;}
         const area=root.getElementById('openai_settings')||root;
         const label=area.querySelector('[data-i18n="View / Edit bias preset"]');
         const header=label?.closest('.inline-drawer-toggle')||area.querySelector('.openai_logit_bias_list')?.closest('.inline-drawer')?.querySelector('.inline-drawer-toggle')||root.querySelector('#completion_prompt_manager .completion_prompt_manager_header');
@@ -2220,9 +2254,9 @@
                 mmLog('backupPreferences', 'settings', 'changed', '', undefined, { field: id, value: q(id).value });
                 const sequence=++saveSequence;sync();mmBackupSaveStatus('…');
                 try {
-                    await mmBackupPersist({ retention: q('awmBackupRetention').value, schedule: q('awmBackupSchedule').value, dailyTime: q('awmBackupDailyTime').value || '04:00', weeklyDay: q('awmBackupWeeklyDay').value, weeklyTime: q('awmBackupWeeklyTime').value || '04:00' });
+                    await mmBackupPersist({ ...(id==='awmBackupRetention'?{enabled:q('awmBackupRetention').value!=='off'}:{}), retention: q('awmBackupRetention').value, schedule: q('awmBackupSchedule').value, dailyTime: q('awmBackupDailyTime').value || '04:00', weeklyDay: q('awmBackupWeeklyDay').value, weeklyTime: q('awmBackupWeeklyTime').value || '04:00' });
                     if(sequence!==saveSequence)return;
-                    mmBackupSchedule();mmBackupSaveStatus('设置已保存');
+                    mmBackupSchedule();mmBackupSyncToggle();mmBackupSaveStatus('设置已保存');
                 } catch (error) { if(sequence===saveSequence){mmBackupSaveStatus('保存失败');mmBackupStatus('设置保存失败：'+error.message);}mmLog('backupPreferences','settings','failed',error); }
             };
             q(id).onchange = persist;
@@ -2230,15 +2264,42 @@
         });
         q('awmBackupManual').onclick = mmBackupOpen;
         q('awmBackupClean').onclick = ()=>mmBackupRun('clean');
-        sync(); mmBackupSetBusy(mmBackupBusy);
+        sync(); mmBackupSyncToggle();mmBackupSetBusy(mmBackupBusy);
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V9.2 isolated backup cleaner.
+    // END V9.3 isolated backup cleaner.
 
+    const MM_FEATURE_KEY='鲜虾鱼板面.features.v1';
+    function mmFeatures() {
+        try {
+            const account=hostWindow.SillyTavern?.getContext?.()?.accountStorage;
+            return {editor:true,styles:true,search:true,...JSON.parse(account?.getItem?.(MM_FEATURE_KEY)||hostWindow.localStorage.getItem(MM_FEATURE_KEY)||'{}')};
+        } catch (_) { return {editor:true,styles:true,search:true}; }
+    }
+    function mmPageEnabled(page) {
+        const flags=mmFeatures();return page==='mianmian'?flags.editor:page==='styles'?flags.styles:true;
+    }
+    function mmFeatureApply() {
+        awmSyncNav();
+        const panel=root.getElementById(PANEL_ID);
+        if(panel&&panel.style.display!=='none'&&!mmPageEnabled(awmCurrentPage))render('settings');
+        if(!mmFeatures().search)root.getElementById('awmPresetSearchDialog')?.close();
+        mmPresetSearchAttach();
+    }
+    function mmFeatureSet(key,enabled) {
+        if(mmWriteLocked()||mmRuntime.loadWaiters.char||mmRuntime.loadWaiters.user)throw Error('请等待当前操作完成');
+        const value=JSON.stringify({...mmFeatures(),[key]:!!enabled});
+        const ctx=hostWindow.SillyTavern?.getContext?.();
+        if(ctx?.accountStorage?.setItem){ctx.accountStorage.setItem(MM_FEATURE_KEY,value);ctx.saveSettingsDebounced?.();}
+        else hostWindow.localStorage.setItem(MM_FEATURE_KEY,value);
+        mmFeatureApply();
+    }
     function bindExtensionSettings(main) {
-        mmBackupBind(main);
-        main.querySelector('#awmStorageMode').value=mmStorageMode();
+        for(const [id,key] of [['awmEditorEnabled','editor'],['awmStylesEnabled','styles'],['awmSearchEnabled','search']]) {
+            const input=main.querySelector('#'+id);input.checked=mmFeatures()[key];
+            input.onchange=()=>{try{mmFeatureSet(key,input.checked);}catch(error){input.checked=mmFeatures()[key];toast(error.message,'warning');}};
+        }
         const launcherToggle=main.querySelector('#awmLauncherVisible');
         launcherToggle.checked=mmLauncherVisible();
         launcherToggle.onchange=()=>mmSetLauncherVisible(launcherToggle.checked);
@@ -2246,6 +2307,33 @@
         launcherSize.value=hostWindow.localStorage.getItem(MM_LAUNCHER_KEY+'.size')||'56';
         main.querySelector('#awmLauncherSizeValue').textContent=launcherSize.value+'px';
         launcherSize.oninput=()=>{main.querySelector('#awmLauncherSizeValue').textContent=mmLauncherSize(launcherSize.value)+'px';};
+        main.querySelector('#awmResetLauncher').onclick=()=>{
+            hostWindow.localStorage.removeItem(MM_LAUNCHER_KEY+'.position');
+            const button=root.getElementById('awm-launcher-v54');
+            if(button){button.style.left=button.style.top='';button.style.right='18px';button.style.bottom='95px';}
+            mmSetLauncherVisible(true);launcherToggle.checked=true;
+        };
+        const toggle=main.querySelector('#awmBackupEnabled');toggle.disabled=true;
+        mmBackupReadPreferences().then(()=>{toggle.disabled=false;mmBackupSyncToggle();mmBackupStatus(mmBackupSettings().enabled&&mmBackupSettings().retention!=='off'?'尚未执行清理':'自动清理已关闭');}).catch(error=>mmBackupStatus('清理设置读取失败：'+error.message));
+        toggle.onchange=async()=>{
+            const previous=mmBackupSettings();toggle.disabled=true;
+            const enabled=toggle.checked;
+            hostWindow.clearTimeout(mmBackupTimer);
+            try {
+                await mmBackupPersist({enabled,retention:enabled&&previous.retention==='off'?'7d':previous.retention});
+                mmBackupSchedule();mmBackupStatus(enabled?'自动清理已开启':'自动清理已关闭');
+                const select=root.getElementById('awmBackupRetention');if(select)select.value=mmBackupSettings().retention;
+            } catch(error){mmBackupStatus('设置保存失败：'+error.message);}
+            finally{toggle.disabled=false;mmBackupSyncToggle();}
+        };
+        mmFeatureApply();
+    }
+    function mmBackupSyncToggle() {
+        const toggle=root.getElementById('awmBackupEnabled'),prefs=mmBackupSettings();
+        if(toggle)toggle.checked=prefs.enabled!==false&&prefs.retention!=='off';
+    }
+    function bindDataSettings(main) {
+        main.querySelector('#awmStorageMode').value=mmStorageMode();
         main.querySelector('#awmExportMmLog').onclick = mmExportDiagnostics;
         main.querySelector('#awmClearMmLog').onclick = () => { mmDiagnostics.length = 0; toast('诊断日志已清空', 'success'); };
         main.querySelector('#awmImportData').onclick = importAllData;
@@ -2256,12 +2344,6 @@
             catch (err) { e.target.value = previous; toast('切换失败：' + err.message, 'error'); }
         };
 
-        main.querySelector('#awmResetLauncher').onclick=()=>{
-            hostWindow.localStorage.removeItem(MM_LAUNCHER_KEY+'.position');
-            const button=root.getElementById('awm-launcher-v54');
-            if(button){button.style.left=button.style.top='';button.style.right='18px';button.style.bottom='95px';}
-            mmSetLauncherVisible(true);launcherToggle.checked=true;
-        };
         main.querySelector('#awmClearTavernData').onclick=()=>{
             if(mmStorageMode() === 'tavern' && !canUseTavernStorage()) return toast('当前没有可用的酒馆持久化接口','warning');
             const ok=mmStorageMode() === 'browser' ? (hostWindow.localStorage.removeItem(MM_LOCAL_KEY), true) : clearTavernData();
@@ -2723,7 +2805,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '9.2', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '9.3', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4377,7 +4459,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V9.2 loaded');
+        console.log('[鲜虾鱼板面] V9.3 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});

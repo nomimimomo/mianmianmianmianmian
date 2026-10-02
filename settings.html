@@ -1,46 +1,5 @@
-<div class="awm-extension-config extension_container">
-  <div class="inline-drawer">
-    <div class="inline-drawer-toggle inline-drawer-header">
-      <b>鲜虾鱼板面 V9.2</b>
-      <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-    </div>
-    <div class="inline-drawer-content">
-      <div class="awm-extension-settings-content">
-        <section class="awm-extension-card" aria-labelledby="awmStorageTitle">
-          <h3 id="awmStorageTitle">数据存储</h3>
-          <label class="awm-extension-line awm-storage-line"><span>存储位置</span><select id="awmStorageMode"><option value="tavern">酒馆（默认）</option><option value="browser">浏览器</option></select></label>
-          <div class="awm-extension-actions"><button class="menu_button" id="awmImportData" type="button">导入数据</button><button class="menu_button" id="awmExportData" type="button">导出数据</button><button class="menu_button" id="awmClearTavernData" type="button">清除鲜虾鱼板面数据</button></div>
-        </section>
-
-        <section class="awm-extension-card" aria-labelledby="awmLauncherTitle">
-          <h3 id="awmLauncherTitle">悬浮按钮</h3>
-          <div class="awm-extension-toggle-line"><label class="awm-extension-toggle"><input id="awmLauncherVisible" type="checkbox"><span class="awm-switch-track" aria-hidden="true"></span><span>显示悬浮按钮</span></label><button class="menu_button" id="awmResetLauncher" type="button">找回悬浮按钮</button></div>
+<div class="awm-extension-config extension_container"><div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>鲜虾鱼板面 V9.3</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content"><div class="awm-extension-settings-content"><section class="awm-extension-card awm-feature-switches"><label class="awm-extension-toggle"><input id="awmEditorEnabled" type="checkbox"><span class="awm-switch-track" aria-hidden="true"></span><span>面面编辑器</span></label><label class="awm-extension-toggle"><input id="awmStylesEnabled" type="checkbox"><span class="awm-switch-track" aria-hidden="true"></span><span>文风管理</span></label><label class="awm-extension-toggle"><input id="awmSearchEnabled" type="checkbox"><span class="awm-switch-track" aria-hidden="true"></span><span>预设搜索</span></label></section><section class="awm-extension-card" aria-label="悬浮按钮">
+          
+          <div class="awm-extension-toggle-line"><label class="awm-extension-toggle"><input id="awmLauncherVisible" type="checkbox"><span class="awm-switch-track" aria-hidden="true"></span><span>悬浮按钮</span></label><button class="menu_button" id="awmResetLauncher" type="button">找回悬浮按钮</button></div>
           <label class="awm-extension-line awm-size-line"><span>悬浮图标大小 <output id="awmLauncherSizeValue">56px</output></span><input id="awmLauncherSize" type="range" min="32" max="120" step="2" aria-label="悬浮图标大小"></label>
-        </section>
-
-        <section class="awm-extension-card" id="awmBackupSection" aria-labelledby="awmBackupTitle">
-          <div class="awm-backup-heading"><h3 id="awmBackupTitle">备份清理</h3><span id="awmBackupSaveStatus" role="status" aria-live="polite"></span></div>
-          <div class="awm-backup-fields">
-            <label class="awm-backup-field"><span>保留时间</span><select id="awmBackupRetention"><option value="off">不开启</option><option value="1d">1天</option><option value="7d">7天</option><option value="30d">30天</option><option value="3m">3个月</option><option value="6m">6个月</option><option value="1y">1年</option></select></label>
-            <div><label class="awm-backup-field"><span>清理时间</span><select id="awmBackupSchedule"><option value="startup">每次加载酒馆页面后</option><option value="daily">每天</option><option value="weekly">每周</option></select></label>
-              <div class="awm-backup-extra" id="awmBackupDaily" hidden><input id="awmBackupDailyTime" type="time" aria-label="每日清理时刻" value="04:00"></div>
-              <div class="awm-backup-extra" id="awmBackupWeekly" hidden><select id="awmBackupWeeklyDay" aria-label="每周清理日期"><option value="0">周日</option><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option></select><input id="awmBackupWeeklyTime" type="time" aria-label="每周清理时刻" value="04:00"></div>
-            </div>
-          </div>
-          <p class="awm-backup-help">按保留期限清理聊天备份和酒馆设置备份。</p>
-          <div class="awm-extension-actions awm-backup-actions"><button class="menu_button" id="awmBackupManual" type="button">手动删除</button><button class="menu_button" id="awmBackupClean" type="button">立即清理</button></div>
-          <div id="awmBackupConfirm" class="awm-backup-confirm" hidden>
-            <p id="awmBackupConfirmMessage"></p>
-            <div class="awm-extension-actions"><button class="menu_button" id="awmBackupConfirmCancel" data-backup-confirm type="button">取消</button><button class="menu_button" id="awmBackupConfirmAccept" data-backup-confirm type="button">确认清理</button></div>
-          </div>
-          <div id="awmBackupStatus" class="awm-backup-status" role="status" aria-live="polite"></div>
-        </section>
-
-        <section class="awm-extension-card" aria-labelledby="awmLogTitle">
-          <h3 id="awmLogTitle">诊断日志</h3>
-          <div class="awm-extension-actions"><button class="menu_button" id="awmExportMmLog" type="button">导出日志</button><button class="menu_button" id="awmClearMmLog" type="button">清空日志</button></div>
-        </section>
-      </div>
-    </div>
-  </div>
-</div>
+        </section><section class="awm-extension-card"><label class="awm-extension-toggle"><input id="awmBackupEnabled" type="checkbox"><span class="awm-switch-track" aria-hidden="true"></span><span>备份清理</span></label><div id="awmBackupStatus" class="awm-backup-status" role="status" aria-live="polite"></div></section></div></div></div></div>

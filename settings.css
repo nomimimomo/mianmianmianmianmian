@@ -1,50 +1,50 @@
-#awm-extension-settings .awm-extension-config{padding:0 8px;min-width:0}
-#awm-extension-settings .awm-extension-settings-content{min-width:0;max-width:680px;padding:4px 8px 12px;color:var(--SmartThemeBodyColor)}
-#awm-extension-settings .awm-extension-card{min-width:0;padding:10px 0;border-bottom:1px solid var(--SmartThemeBorderColor)}
-#awm-extension-settings .awm-extension-card:last-child{border-bottom:0}
-#awm-extension-settings .awm-extension-card h3{font-size:1em;line-height:1.3;font-weight:700;margin:0 0 8px;color:inherit}
-#awm-extension-settings .awm-extension-line{display:flex;align-items:center;gap:10px;min-width:0;margin:0}
-#awm-extension-settings .awm-storage-line>span{flex:0 0 78px;white-space:nowrap}
-#awm-extension-settings .awm-storage-line select{flex:1 1 auto;width:100%}
-#awm-extension-settings .awm-extension-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;margin-top:8px}
-#awm-extension-settings select{height:36px;min-width:0;max-width:100%;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,8px);padding:0 10px;font:inherit}
-#awm-extension-settings button.menu_button{display:inline-flex!important;align-items:center;justify-content:center;box-sizing:border-box;width:auto!important;min-width:max-content;max-width:100%;height:34px;min-height:34px;padding:0 12px;margin:0;white-space:nowrap;writing-mode:horizontal-tb;flex:0 1 auto;font:inherit}
-#awm-extension-settings .awm-extension-toggle-line{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
-#awm-extension-settings .awm-extension-toggle{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-width:0;cursor:pointer}
-#awm-extension-settings .awm-extension-toggle input{position:absolute;opacity:0;width:42px;height:24px;margin:0;cursor:pointer}
-#awm-extension-settings .awm-switch-track{display:inline-block;position:relative;flex:0 0 42px;width:42px;height:24px;border-radius:99px;background:var(--SmartThemeBorderColor)}
-#awm-extension-settings .awm-switch-track:after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--SmartThemeBodyColor);transition:transform .15s}
-#awm-extension-settings .awm-extension-toggle input:checked+.awm-switch-track{background:#789a77}
-#awm-extension-settings .awm-extension-toggle input:checked+.awm-switch-track:after{transform:translateX(18px);background:white}
-#awm-extension-settings .awm-extension-toggle input:focus-visible+.awm-switch-track{outline:2px solid var(--SmartThemeBodyColor);outline-offset:2px}
-#awm-extension-settings .awm-size-line{margin-top:8px}
-#awm-extension-settings .awm-size-line>span{min-width:145px;white-space:nowrap}
-#awm-extension-settings .awm-size-line input[type=range]{flex:1 1 auto;min-width:90px;width:auto;margin:0;accent-color:#789a77}
-#awm-extension-settings output{font-variant-numeric:tabular-nums}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-config{padding:0 8px;min-width:0}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-settings-content{min-width:0;max-width:680px;padding:4px 8px 12px;color:var(--SmartThemeBodyColor)}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-card{min-width:0;padding:10px 0;border-bottom:1px solid var(--SmartThemeBorderColor)}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-card:last-child{border-bottom:0}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-card h3{font-size:1em;line-height:1.3;font-weight:700;margin:0 0 8px;color:inherit}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-line{display:flex;align-items:center;gap:10px;min-width:0;margin:0}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-storage-line>span{flex:0 0 78px;white-space:nowrap}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-storage-line select{flex:1 1 auto;width:100%}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;margin-top:8px}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) select{height:36px;min-width:0;max-width:100%;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,8px);padding:0 10px;font:inherit}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) button.menu_button{display:inline-flex!important;align-items:center;justify-content:center;box-sizing:border-box;width:auto!important;min-width:max-content;max-width:100%;height:34px;min-height:34px;padding:0 12px;margin:0;white-space:nowrap;writing-mode:horizontal-tb;flex:0 1 auto;font:inherit}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-toggle-line{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-toggle{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-width:0;cursor:pointer}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-toggle input{position:absolute;opacity:0;width:42px;height:24px;margin:0;cursor:pointer}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-switch-track{display:inline-block;position:relative;flex:0 0 42px;width:42px;height:24px;border-radius:99px;background:var(--SmartThemeBorderColor)}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-switch-track:after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--SmartThemeBodyColor);transition:transform .15s}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-toggle input:checked+.awm-switch-track{background:#789a77}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-toggle input:checked+.awm-switch-track:after{transform:translateX(18px);background:white}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-toggle input:focus-visible+.awm-switch-track{outline:2px solid var(--SmartThemeBodyColor);outline-offset:2px}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-size-line{margin-top:8px}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-size-line>span{min-width:145px;white-space:nowrap}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-size-line input[type=range]{flex:1 1 auto;min-width:90px;width:auto;margin:0;accent-color:#789a77}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) output{font-variant-numeric:tabular-nums}
 @media(max-width:520px){
-  #awm-extension-settings .awm-extension-settings-content{padding:4px 4px 10px}
-  #awm-extension-settings .awm-extension-actions button.menu_button{flex:1 1 auto}
-  #awm-extension-settings .awm-size-line>span{min-width:0;white-space:normal}
+  :is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-settings-content{padding:4px 4px 10px}
+  :is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-extension-actions button.menu_button{flex:1 1 auto}
+  :is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-size-line>span{min-width:0;white-space:normal}
 }
 
 /* V7.7: compact backup-cleaner controls in the extension drawer. */
-#awm-extension-settings .awm-backup-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
-#awm-extension-settings .awm-backup-field{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;align-items:center}
-#awm-extension-settings .awm-backup-field select{width:100%;min-width:0}
-#awm-extension-settings .awm-backup-extra{display:flex;gap:8px;margin-top:8px;margin-left:72px}
-#awm-extension-settings .awm-backup-extra[hidden]{display:none!important}
-#awm-extension-settings .awm-backup-extra select,#awm-extension-settings .awm-backup-extra input{min-width:0;width:100%;flex:1;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:5px;font:inherit}
-#awm-extension-settings .awm-backup-help,#awm-extension-settings .awm-backup-status{font-size:.85em;line-height:1.5;opacity:.8;margin:8px 0 0;overflow-wrap:anywhere}
-#awm-extension-settings .awm-backup-actions{justify-content:flex-start}
-#awm-extension-settings #awmBackupSection button:disabled{opacity:.6;cursor:wait}
-@media(max-width:650px){#awm-extension-settings .awm-backup-fields{grid-template-columns:minmax(0,1fr)}}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-field{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;align-items:center}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-field select{width:100%;min-width:0}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-extra{display:flex;gap:8px;margin-top:8px;margin-left:72px}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-extra[hidden]{display:none!important}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-extra select,:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-extra input{min-width:0;width:100%;flex:1;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:5px;font:inherit}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-help,:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-status{font-size:.85em;line-height:1.5;opacity:.8;margin:8px 0 0;overflow-wrap:anywhere}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-actions{justify-content:flex-start}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) #awmBackupSection button:disabled{opacity:.6;cursor:wait}
+@media(max-width:650px){:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-fields{grid-template-columns:minmax(0,1fr)}}
 
-#awm-extension-settings .awm-backup-confirm[hidden]{display:none!important}
-#awm-extension-settings .awm-backup-confirm{margin-top:10px;padding:10px 12px;border:1px solid var(--SmartThemeBorderColor);border-radius:8px;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor)}
-#awm-extension-settings .awm-backup-confirm p{margin:0;font-size:.9em;line-height:1.5;overflow-wrap:anywhere}
-#awm-extension-settings .awm-backup-confirm .awm-extension-actions{justify-content:flex-end;margin-top:8px}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-confirm[hidden]{display:none!important}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-confirm{margin-top:10px;padding:10px 12px;border:1px solid var(--SmartThemeBorderColor);border-radius:8px;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor)}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-confirm p{margin:0;font-size:.9em;line-height:1.5;overflow-wrap:anywhere}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-confirm .awm-extension-actions{justify-content:flex-end;margin-top:8px}
 
-#awm-extension-settings .awm-backup-actions{justify-content:flex-start!important}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-actions{justify-content:flex-start!important}
 #awmChatBackupDialog{box-sizing:border-box;width:min(1050px,calc(100vw - 24px));max-height:calc(100dvh - 32px);padding:0;border:1px solid var(--SmartThemeBorderColor,#d9d7cf);border-radius:var(--mainBorderRadius,12px);background:var(--SmartThemeBlurTintColor,#f7f4ed);color:var(--SmartThemeBodyColor,#394735);font-family:var(--mainFontFamily,inherit);box-shadow:0 15px 60px #0005;overflow:hidden}
 #awmChatBackupDialog::backdrop{background:#0006}
 #awmChatBackupDialog *{box-sizing:border-box}
@@ -89,15 +89,15 @@
 #awmChatBackupDialog .awm-chat-backup-sign{display:inline-flex;align-items:center;justify-content:center;align-self:center;height:36px;line-height:1}
 @media(max-width:650px){#awmChatBackupDialog .awm-chat-backup-toggle{grid-template-columns:minmax(0,1fr) 20px;gap:4px 8px}#awmChatBackupDialog .awm-chat-backup-name{grid-column:1;grid-row:1}#awmChatBackupDialog .awm-chat-backup-info{grid-column:1;grid-row:2;white-space:normal}#awmChatBackupDialog .awm-chat-backup-sign{grid-column:2;grid-row:1 / 3}#awmChatBackupDialog .awm-chat-backup-tools{gap:8px;padding:10px 12px}}
 
-#awm-extension-settings .awm-backup-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-#awm-extension-settings .awm-backup-heading h3{margin:0}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-heading h3{margin:0}
 #awmBackupSaveStatus{font-size:.85em;opacity:.8}
 
 /* 清理区统一字号；标题右侧状态不另起一行。 */
-#awm-extension-settings .awm-backup-heading{flex-wrap:nowrap;justify-content:space-between;margin-bottom:8px}
-#awm-extension-settings #awmBackupSaveStatus{font:inherit;opacity:1;white-space:nowrap}
-#awm-extension-settings .awm-backup-help,#awm-extension-settings .awm-backup-status{font:inherit;opacity:1;line-height:1.5}
-#awm-extension-settings .awm-backup-actions button.menu_button{flex:0 0 auto;margin:0}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-heading{flex-wrap:nowrap;justify-content:space-between;margin-bottom:8px}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) #awmBackupSaveStatus{font:inherit;opacity:1;white-space:nowrap}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-help,:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-status{font:inherit;opacity:1;line-height:1.5}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-actions button.menu_button{flex:0 0 auto;margin:0}
 
 /* V9.1: one frame for preset search and backup browsing, matching the main panel. */
 :is(#awmChatBackupDialog,#awmPresetSearchDialog).awm-tool-dialog{box-sizing:border-box;--awm-tool-pad:10px;position:fixed;inset:auto;margin:0;padding:0;max-width:none;max-height:none;min-width:0;min-height:0;transform:none;border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,10px);background:var(--SmartThemeBlurTintColor);color:var(--SmartThemeBodyColor);font-family:var(--mainFontFamily,inherit);font-size:var(--mainFontSize,1rem);box-shadow:0 10px 35px rgba(0,0,0,.35);overflow:hidden}
@@ -145,3 +145,28 @@
 
 /* Preset search is a non-modal tool: the native editor remains interactive. */
 #awmPresetSearchDialog.awm-tool-dialog{z-index:100001}
+
+/* Settings: consistent peer titles and shared compact controls. */
+#awm-extension-settings .awm-extension-settings-content{padding:4px 14px 12px}
+#awm-extension-settings .awm-extension-card{padding:16px 0}
+#awm-extension-settings .awm-extension-toggle{font-size:1em;font-weight:700;gap:12px;min-height:40px}
+#awm-extension-settings .awm-feature-switches{display:flex;flex-direction:column;gap:8px}
+#awm-extension-settings .awm-extension-toggle-line{justify-content:space-between}
+#awm-extension-settings .awm-backup-status{margin-top:8px;font-size:1em}
+#awmMain.awm-panel-settings{display:block;padding:4px 16px 14px}
+#awmMain.awm-panel-settings>:is(.awm-card,.awm-extension-card){margin:0;padding:16px 0;border:0;border-bottom:1px solid var(--SmartThemeBorderColor);border-radius:0;background:transparent;box-shadow:none}
+#awmMain.awm-panel-settings>:last-child{border-bottom:0}
+#awmMain.awm-panel-settings h3{font-size:1em;line-height:1.5;margin:0 0 12px;font-weight:700}
+#awmMain.awm-panel-settings :is(button,select,input){font:inherit;color:inherit;min-width:0;max-width:100%;box-sizing:border-box}
+#awmMain.awm-panel-settings :is(button,select){background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;min-height:36px;padding:6px 10px;margin:0}
+#awmMain.awm-panel-settings .awm-layout-controls{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px}
+#awmMain.awm-panel-settings .awm-layout-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+#awmMain.awm-panel-settings .awm-extension-actions{margin-top:12px}
+#awmMain.awm-panel-settings .awm-backup-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:12px}
+#awmMain.awm-panel-settings .awm-backup-field{display:flex;flex-direction:column;align-items:stretch;gap:7px}
+#awmMain.awm-panel-settings .awm-backup-field select{width:100%}
+#awmMain.awm-panel-settings .awm-storage-line{display:grid;grid-template-columns:90px minmax(0,1fr)}
+#awmMain.awm-panel-settings .awm-backup-heading{margin-bottom:12px}
+#awmMain.awm-panel-settings .awm-backup-heading h3{margin:0}
+@media(max-width:440px){#awmMain.awm-panel-settings{padding-left:12px;padding-right:12px}#awmMain.awm-panel-settings :is(button,select){padding:6px 8px}}
+#awmMain.awm-panel-settings .awm-extension-actions button{flex:0 0 auto;width:auto}
