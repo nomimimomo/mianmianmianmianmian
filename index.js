@@ -1478,6 +1478,7 @@
 
     // This dedicated key never contains styles, C/U drafts or layout data.
     const MM_BACKUP_PREF_KEY='鲜虾鱼板面.backupCleaner.v1';
+    let mmBackupReadError=null;
     let mmBackupPrefs=null,mmBackupPrefsReading=null,mmBackupPrefsQueue=Promise.resolve(),mmBackupPrefsSequence=0;
     async function mmBackupServerSettings(){
         let timer;
@@ -1503,23 +1504,30 @@
     }
     async function mmBackupReadPreferences(){
         if(mmBackupPrefs)return mmBackupPrefs;
+        if(mmBackupReadError)throw mmBackupReadError;
         if(!mmBackupPrefsReading)mmBackupPrefsReading=(async()=>{
+            const ctx=hostWindow.SillyTavern?.getContext?.();
+            const get=mmHelperFn('getVariables');
+            const local=get?.({type:'global'})?.[MM_BACKUP_PREF_KEY]
+                || mmBackupDecodePrefs({extension_settings:ctx?.extensionSettings,accountStorage:{[MM_BACKUP_PREF_KEY]:ctx?.accountStorage?.getItem?.(MM_BACKUP_PREF_KEY)}});
+            if(local){mmBackupPrefs=mmBackupCheckPrefs(local);return mmBackupPrefs;}
+            const sequence=mmBackupPrefsSequence;
             const settings=await mmBackupServerSettings();let value=mmBackupDecodePrefs(settings);
             // Only dedicated cleaner preferences are eligible for migration.
             if(!value){const raw=settings.accountStorage?.['鲜虾鱼板面.v2.preferences'];if(raw)value=JSON.parse(raw).value;}
             if(!value){const raw=settings.accountStorage?.['ame-style-management-v05_backup_preferences_v1'];if(raw)value=JSON.parse(raw);}
             if(!value){try{value=JSON.parse(hostWindow.localStorage.getItem(AWM_LAYOUT_KEY)||'{}').backupCleaner;}catch{}}
+            if(sequence!==mmBackupPrefsSequence)return mmBackupPrefs;
             mmBackupPrefs=value?mmBackupCheckPrefs(value):{...MM_BACKUP_DEFAULT};return mmBackupPrefs;
-        })().catch(error=>{mmBackupPrefsReading=null;throw error;});
+        })().catch(error=>{mmBackupReadError=error;mmBackupPrefsReading=null;throw error;});
         return mmBackupPrefsReading;
     }
     function mmBackupSettings(){return {...MM_BACKUP_DEFAULT,...(mmBackupPrefs||{})};}
     async function mmBackupPersist(changes){
-        await mmBackupReadPreferences();
-        const next=mmBackupCheckPrefs({...mmBackupPrefs,...changes});
+        const next=mmBackupCheckPrefs({...MM_BACKUP_DEFAULT,...mmBackupPrefs,...changes});
         // Keep lastRun and retention only; discard unrelated V8.4 preferences during migration.
         const value=Object.fromEntries(Object.keys(MM_BACKUP_DEFAULT).map(key=>[key,next[key]]));
-        mmBackupPrefs=value;const sequence=++mmBackupPrefsSequence;
+        mmBackupReadError=null;mmBackupPrefs=value;const sequence=++mmBackupPrefsSequence;
         const task=mmBackupPrefsQueue.catch(()=>{}).then(async()=>{
             if(sequence!==mmBackupPrefsSequence)return;
             const ctx=hostWindow.SillyTavern?.getContext?.(),insert=mmHelperFn('insertOrAssignVariables');
@@ -1825,9 +1833,9 @@
             mmBackupStatus(mmBackupIdleStatus());
             toast(result, failed ? 'warning' : 'success');
         } catch (error) {
-            mmBackupStatus('备份' + (action === 'scan' ? '扫描' : '清理') + '失败：' + error.message);
+            mmBackupStatus(automatic?'自动清理失败':'备份' + (action === 'scan' ? '扫描' : '清理') + '失败：' + error.message);
             mmLog('backupCleaner', action, 'failed', error.message);
-            if (automatic) toast('备份清理失败：' + error.message, 'error');
+            if (automatic) toast('自动清理失败', 'error');
         } finally {
             const report=mmBackupReport;mmBackupReport=null;
             if(report?.token)await mmSettingsFetch('/api/data-maid/finalize',{token:report.token}).catch(error=>mmLog('backupCleaner','settings','finalize-failed',error));
@@ -1837,7 +1845,7 @@
     }
     function mmBackupAutoEnabled(){const prefs=mmBackupSettings();return prefs.enabled!==false&&prefs.retention!=='off';}
     async function mmBackupSchedule(startup = false) {
-        try {await mmBackupReadPreferences();}catch(error){mmLog('backupPreferences','settings','unavailable',error);return;}
+        try {await mmBackupReadPreferences();}catch(error){mmBackupStatus('自动清理失败');mmLog('backupPreferences','settings','unavailable',error.message);return;}
         hostWindow.clearTimeout(mmBackupTimer);
         if (mmBackupStopped) return;
         const settings = mmBackupSettings();
@@ -2334,12 +2342,6 @@
         const section = main.querySelector('#awmBackupSection');
         if (!section) return;
         section.querySelector('#awmBackupManual').onclick=mmBackupOpen;
-        const controls=[...section.querySelectorAll('input,select,button:not(#awmBackupManual)')];controls.forEach(x=>x.disabled=true);
-        const loading=root.createElement('option');loading.value='';loading.textContent='读取中…';loading.selected=true;
-        section.querySelector('#awmBackupRetention').prepend(loading);section.querySelector('#awmBackupRetention').value='';
-        mmBackupStatus('读取清理设置…');
-        try{await mmBackupReadPreferences();}catch(error){loading.textContent='读取失败，请重新打开';section.title=error.message;mmBackupStatus('清理设置读取失败：'+error.message);return;}
-        if(!section.isConnected)return;loading.remove();controls.forEach(x=>x.disabled=false);
         const q = id => section.querySelector('#' + id), settings = mmBackupSettings();
         mmLog('backupPreferences', 'settings', 'restored', '', undefined, { retention: settings.retention, schedule: settings.schedule });
         q('awmBackupRetention').value = settings.retention;
@@ -2370,7 +2372,18 @@
         q('awmBackupScan').onclick = ()=>mmBackupRun('scan');
         q('awmBackupClean').onclick = ()=>mmBackupRun('clean');
         sync(); mmBackupSyncToggle();mmBackupSetBusy(mmBackupBusy);
-        if(!mmBackupBusy)mmBackupStatus(mmBackupIdleStatus());
+        if(!mmBackupBusy)mmBackupStatus(mmBackupReadError?'自动清理失败':mmBackupIdleStatus());
+        try{
+            await mmBackupReadPreferences();
+            if(!section.isConnected||saveSequence)return;
+            const loaded=mmBackupSettings();
+            q('awmBackupRetention').value=loaded.retention;
+            q('awmBackupSchedule').value=loaded.schedule;
+            q('awmBackupDailyTime').value=loaded.dailyTime;
+            q('awmBackupWeeklyDay').value=loaded.weeklyDay;
+            q('awmBackupWeeklyTime').value=loaded.weeklyTime;
+            sync();mmBackupSyncToggle();
+        }catch(error){if(!saveSequence){mmBackupStatus('自动清理失败');mmLog('backupPreferences','settings','failed',error.message);}}
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
     // END V9.7 isolated backup cleaner.
@@ -2418,8 +2431,8 @@
             if(button){button.style.left=button.style.top='';button.style.right='18px';button.style.bottom='95px';}
             mmSetLauncherVisible(true);launcherToggle.checked=true;
         };
-        const toggle=main.querySelector('#awmBackupEnabled');toggle.disabled=true;
-        mmBackupReadPreferences().then(()=>{toggle.disabled=false;mmBackupSyncToggle();if(!mmBackupBusy)mmBackupStatus(mmBackupIdleStatus());}).catch(error=>mmBackupStatus('清理设置读取失败：'+error.message));
+        const toggle=main.querySelector('#awmBackupEnabled');toggle.disabled=false;
+        mmBackupReadPreferences().then(()=>{toggle.disabled=false;mmBackupSyncToggle();if(!mmBackupBusy)mmBackupStatus(mmBackupIdleStatus());}).catch(error=>{mmBackupStatus('自动清理失败');mmLog('backupPreferences','settings','failed',error.message);});
         toggle.onchange=async()=>{
             const previous=mmBackupSettings();toggle.disabled=true;
             const enabled=toggle.checked;
@@ -2910,7 +2923,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '9.7', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '9.8', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4573,7 +4586,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V9.7 loaded');
+        console.log('[鲜虾鱼板面] V9.8 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
