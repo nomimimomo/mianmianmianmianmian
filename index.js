@@ -1286,9 +1286,18 @@
         for(let i=1;i<=a.length;i++){const next=[i];for(let j=1;j<=b.length;j++)next[j]=Math.min(next[j-1]+1,row[j]+1,row[j-1]+(a[i-1]===b[j-1]?0:1));row=next;}
         return 1-row[b.length]/Math.max(a.length,b.length);
     }
+    function awmStyleNameSuffixes(name){
+        const parts=String(name||'').normalize('NFKC').split(/[-‐‑‒–—:|／/]+/u);
+        return parts.slice(1).map((_,i)=>awmStyleKey(parts.slice(i+1).join('-'))).filter(Boolean);
+    }
     function awmStyleMatches(styles,name){
-        return styles.map(s=>({s,score:awmStyleScore(s.name,name)}))
-            .filter(x=>x.score>=.82).sort((a,b)=>b.score-a.score).map(x=>x.s);
+        const key=awmStyleKey(name),suffixes=awmStyleNameSuffixes(name);
+        return styles.map(s=>{
+            const oldKey=awmStyleKey(s.name);
+            const score=key&&key===oldKey?1:
+                (oldKey&&(suffixes.includes(oldKey)||awmStyleNameSuffixes(s.name).includes(key))) ? .97 : awmStyleScore(s.name,name);
+            return {s,score};
+        }).filter(x=>x.score>=.82).sort((a,b)=>b.score-a.score).map(x=>x.s);
     }
     function awmInferImportName(block,fileName){
         const styles=load().styles;
@@ -1323,22 +1332,20 @@
         while(j<b.length)newChanged.add(j++);
         return {oldChanged,newChanged};
     }
-    function awmCompareStyle(incoming,matches,index,total,unmatched=false) {
+    function awmCompareStyle(incoming,matches,index,total) {
         return new Promise(resolve=>{
             const panel=root.getElementById(PANEL_ID),layer=root.createElement('div');layer.id='awm-style-compare';
             layer.style.cssText='position:absolute;inset:0;z-index:50;padding:12px;display:flex;background:#0006';
-            layer.innerHTML=`<div class="awm-compare-box"><div>对比文风 ${index+1} / ${total}</div><select aria-label="匹配的已有文风"></select><div class="awm-compare-summary" role="status"></div><div class="awm-compare-cols"><section><b data-old-title></b><pre data-old-content></pre></section><section><b data-new-title></b><pre data-new-content></pre></section></div><div class="awm-compare-actions"><button class="awm-btn" data-choice="old">保留旧版</button><button class="awm-btn" data-choice="new">仅替换正文</button><button class="awm-btn" data-choice="skip">跳过此条</button><span style="font-size:12px">名字、作者、标签、备注保持原样</span></div></div>`;
-            const select=layer.querySelector('select');if(unmatched){const o=root.createElement('option');o.value='';o.textContent='未匹配到旧文风：新增，或选择要替换的旧文风';select.appendChild(o);}matches.forEach(s=>{const o=root.createElement('option');o.value=s.id;o.textContent=s.name;select.appendChild(o)});select.hidden=!unmatched&&matches.length===1;
+            layer.innerHTML=`<div class="awm-compare-box"><div>对比文风 ${index+1} / ${total}</div><select aria-label="匹配的已有文风"></select><div class="awm-compare-summary" role="status"></div><div class="awm-compare-cols"><section><b data-old-title></b><pre data-old-content></pre></section><section><b data-new-title></b><pre data-new-content></pre></section></div><div class="awm-compare-actions"><button class="awm-btn" data-choice="old">保留旧版</button><button class="awm-btn" data-choice="new">仅替换正文</button><button class="awm-btn" data-choice="skip" title="新增新版，保留旧版">跳过</button><span style="font-size:12px">替换只改正文；跳过保留两版</span></div></div>`;
+            const select=layer.querySelector('select');matches.forEach(s=>{const o=root.createElement('option');o.value=s.id;o.textContent=s.name;select.appendChild(o)});select.hidden=matches.length===1;
             const format=s=>String(s.content||'');
             const paint=(node,lines,changed,kind)=>{
                 node.innerHTML=lines.map((line,i)=>changed.has(i)?'<span class="awm-diff-'+kind+'">'+esc(line||' ')+'</span>':esc(line||' ')).join('\n');
             };
             const draw=()=>{
-                const old=matches.find(x=>x.id===select.value),oldText=old?format(old):'',newText=format(incoming);
-                layer.querySelector('[data-choice=new]').textContent=old?'仅替换正文':'导入为新文风';
-                layer.querySelector('[data-choice=old]').hidden=!old;
+                const old=matches.find(x=>x.id===select.value)||matches[0],oldText=format(old),newText=format(incoming);
                 const diff=awmStyleDiff(oldText,newText);
-                layer.querySelector('[data-old-title]').textContent=old?'旧版 · '+old.name:'未选择旧文风';
+                layer.querySelector('[data-old-title]').textContent='旧版 · '+old.name;
                 layer.querySelector('[data-new-title]').textContent='新版 · '+incoming.name;
                 layer.querySelector('.awm-compare-summary').textContent=diff.oldChanged.size||diff.newChanged.size
                     ? '旧版变化 '+diff.oldChanged.size+' 行 · 新版变化 '+diff.newChanged.size+' 行（着色处）'
@@ -1354,7 +1361,7 @@
     async function awmImportStyles(candidates) {
         if(awmStyleImportBusy){toast('当前导入尚未完成','warning');return;}
         awmStyleImportBusy=true;
-        const next=clone(load());let added=0,updated=0,skipped=0,identical=0;
+        const next=clone(load());let added=0,updated=0,kept=0,identical=0;
         const batch=uid('import');
         const log=(status,details)=>mmLog('styleImport','styles',status,'',undefined,{batch,...details});
         log('started',{total:candidates.length});
@@ -1364,19 +1371,21 @@
                 const matches=awmStyleMatches(next.styles,incoming.name);
                 const same=next.styles.find(s=>String(s.content||'')===incoming.content);
                 if(same){identical++;log('identical-skipped',{index:i+1,total:candidates.length,matchedId:same.id});continue;}
+                if(!matches.length){next.styles.push({...incoming,id:uid('style')});added++;log('added',{index:i+1,reason:'unmatched'});continue;}
                 log('review',{index:i+1,total:candidates.length,matchCount:matches.length,matchedIds:matches.map(s=>s.id)});
-                const answer=await awmCompareStyle(incoming,matches.length?matches:next.styles,i,candidates.length,!matches.length);
+                const answer=await awmCompareStyle(incoming,matches,i,candidates.length);
                 if(answer.choice==='new'){
                     const old=next.styles.find(s=>s.id===answer.id);
                     if(old){old.content=incoming.content;updated++;log('body-replaced',{index:i+1,matchedId:old.id});}
-                    else if(!answer.id){next.styles.push({...incoming,id:uid('style')});added++;log('added',{index:i+1});}
                     else throw Error('所选旧文风不存在');
-                }else{skipped++;log('skipped',{index:i+1,choice:answer.choice});}
+                }else if(answer.choice==='skip'){
+                    next.styles.push({...incoming,id:uid('style')});added++;log('added',{index:i+1,reason:'skip-keep-both',matchedId:answer.id});
+                }else{kept++;log('kept-old',{index:i+1,matchedId:answer.id});}
                 await new Promise(resolve=>hostWindow.requestAnimationFrame(resolve));
             }
             if(added||updated)save(next);
-            render('styles');log('completed',{added,updated,skipped,identical});
-            toast('导入完成：新增 '+added+'，正文更新 '+updated+'，跳过 '+skipped+'，正文相同 '+identical,'success');
+            render('styles');log('completed',{added,updated,kept,identical});
+            toast('导入完成：新增 '+added+'，正文更新 '+updated+'，保留旧版 '+kept+'，正文相同 '+identical,'success');
         }catch(error){log('failed',{message:error.message});throw error;}
         finally{awmStyleImportBusy=false;}
     }
@@ -1462,7 +1471,7 @@
         bindDataSettings(main);
         mmBackupBind(main);
     }
-    // BEGIN V9.6 isolated backup cleaner.
+    // BEGIN V9.7 isolated backup cleaner.
     const MM_BACKUP_DEFAULT = { enabled: true, retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0, lastAutomaticRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
@@ -1535,7 +1544,7 @@
         if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
     }
 
-    // V9.6: retired copies stay in place until the shared retention expires.
+    // V9.7: retired copies stay in place until the shared retention expires.
     const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
     function mmRetiredLocal(key) {
         try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
@@ -2364,7 +2373,7 @@
         if(!mmBackupBusy)mmBackupStatus(mmBackupIdleStatus());
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V9.6 isolated backup cleaner.
+    // END V9.7 isolated backup cleaner.
 
     const MM_FEATURE_KEY='鲜虾鱼板面.features.v1';
     function mmFeatures() {
@@ -2901,7 +2910,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '9.6', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '9.7', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4564,7 +4573,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V9.6 loaded');
+        console.log('[鲜虾鱼板面] V9.7 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
