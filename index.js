@@ -353,9 +353,36 @@
         const topBar = visible('#top-bar') || visible('#top_bar');
         const sendForm = visible('#send_form') || visible('#chat-input-container');
         let top = vp.y + 8, bottom = vp.y + vp.h - 8;
-        if (topBar && topBar.bottom < vp.y + Math.min(200, vp.h * .35)) top = Math.max(top, topBar.bottom + 8);
-        if (sendForm && sendForm.top > top + 160) bottom = Math.min(bottom, sendForm.top - 8);
-        return bottom > top + 120 ? { top, bottom } : { top: vp.y + 8, bottom: vp.y + vp.h - 8 };
+        if (topBar) top = Math.max(top, topBar.bottom + 8);
+        if (sendForm && sendForm.top > top) bottom = Math.min(bottom, sendForm.top - 8);
+        return { top, bottom: Math.max(top + 1, bottom) };
+    }
+    // All windows share the same measured screen boundaries. No layout is saved here.
+    function awmLayoutConstrain(panel) {
+        const vp = awmLayoutViewport(), band = awmLayoutVerticalBand();
+        panel.style.boxSizing = 'border-box';
+        const maxWidth = Math.max(1, vp.w - 16), minWidth = Math.min(maxWidth, vp.w * .84);
+        // Correct rendered dimensions as well as coordinates (themes may apply CSS zoom).
+        for (let i = 0; i < 3; i++) {
+            const rect = panel.getBoundingClientRect();
+            const width = Math.max(minWidth, Math.min(maxWidth, rect.width));
+            const height = Math.min(band.bottom - band.top, rect.height);
+            if (Math.abs(width - rect.width) > .25)
+                panel.style.width = width / (rect.width / (parseFloat(hostWindow.getComputedStyle(panel).width) || rect.width) || 1) + 'px';
+            if (Math.abs(height - rect.height) > .25)
+                panel.style.height = height / (rect.height / (parseFloat(hostWindow.getComputedStyle(panel).height) || rect.height) || 1) + 'px';
+        }
+        for (let i = 0; i < 3; i++) {
+            const rect = panel.getBoundingClientRect();
+            const leftMin = Math.max(vp.x + 8, vp.x + vp.w - rect.width - vp.w * .08);
+            const leftMax = Math.min(vp.x + vp.w - rect.width - 8, vp.x + vp.w * .08);
+            const left = Math.max(leftMin, Math.min(leftMax, rect.left));
+            const top = Math.max(band.top, Math.min(band.bottom - rect.height, rect.top));
+            const scaleX = rect.width / (parseFloat(hostWindow.getComputedStyle(panel).width) || rect.width) || 1;
+            const scaleY = rect.height / (parseFloat(hostWindow.getComputedStyle(panel).height) || rect.height) || 1;
+            panel.style.left = ((parseFloat(panel.style.left) || 0) + (left - rect.left) / scaleX) + 'px';
+            panel.style.top = ((parseFloat(panel.style.top) || 0) + (top - rect.top) / scaleY) + 'px';
+        }
     }
     function awmLayoutFitHeight(panel) {
         const band = awmLayoutVerticalBand();
@@ -386,6 +413,7 @@
             : vp.y + Math.max(0, Math.min(vp.h - rect.height, (+value.y || 0) * vp.h));
         panel.style.left = (parseFloat(panel.style.left) || 0) + left - rect.left + 'px';
         panel.style.top = (parseFloat(panel.style.top) || 0) + top - rect.top + 'px';
+        awmLayoutConstrain(panel);
     }
     function awmLayoutRestore() {
         const state = awmLayoutState();
@@ -402,6 +430,7 @@
                 const top = band ? (awmLayoutDevice() === 'mobile' ? band.top + (band.bottom - band.top - rect.height) / 2 : band.top)
                     : vp.y + (vp.h - rect.height) / 2;
                 panel.style.top = (parseFloat(panel.style.top) || 0) + top - rect.top + 'px';
+                awmLayoutConstrain(panel);
             }
         }
     }
@@ -439,6 +468,7 @@
                     panel.style.transform = 'none'; panel.style.left = left + 'px';
                     panel.style.width = right - left + 'px';
                 }
+                awmLayoutConstrain(panel);
             });
             for (const type of ['pointerup','pointercancel']) handle.addEventListener(type, () => {
                 if (start) { const state = awmLayoutState(); state.current = awmLayoutCapture(); awmLayoutWrite(state); }
@@ -483,6 +513,7 @@
             const top = band ? (awmLayoutDevice() === 'mobile' ? band.top + (band.bottom - band.top - rect.height) / 2 : band.top)
                 : vp.y + (vp.h - rect.height) / 2;
             panel.style.top = (top - rect.top) + 'px';
+            awmLayoutConstrain(panel);
             state.current = awmLayoutCapture(); if (state.locked) state.slots[state.slot] = state.current; awmLayoutWrite(state);
             toast('已恢复默认位置', 'success');
         };
@@ -520,6 +551,7 @@
             panel.style.top = (band ? (awmLayoutDevice() === 'mobile'
                 ? Math.max(band.top, Math.min(band.bottom - panel.offsetHeight, desiredTop)) : band.top)
                 : Math.max(vp.y, Math.min(vp.y + vp.h - panel.offsetHeight, desiredTop))) + 'px';
+            awmLayoutConstrain(panel);
         });
 
         head.addEventListener('pointerup', () => {
@@ -565,6 +597,7 @@
 
         panel.style.left = (curLeft + (desiredLeft - rect.left)) + 'px';
         panel.style.top = (curTop + (desiredTop - rect.top)) + 'px';
+        awmLayoutConstrain(panel);
     }
 
     let vvBound = false;
@@ -1345,7 +1378,7 @@
         </section>`;
         awmLayoutBindSettings(main);
     }
-    // BEGIN V9.1 isolated backup cleaner.
+    // BEGIN V9.2 isolated backup cleaner.
     const MM_BACKUP_DEFAULT = { retention: 'off', schedule: 'startup', dailyTime: '04:00', weeklyDay: '0', weeklyTime: '04:00', lastRun: 0 };
     let mmBackupTimer = 0, mmBackupBusy = false, mmBackupStopped = false;
     let mmBackupConfirmResolve = null;
@@ -1414,7 +1447,7 @@
         if(sequence!==mmBackupPrefsSequence)await mmBackupPrefsQueue;
     }
 
-    // V9.1: retired copies stay in place until the shared retention expires.
+    // V9.2: retired copies stay in place until the shared retention expires.
     const MM_RETIRED_KEY = '鲜虾鱼板面.retiredCopies.v1';
     function mmRetiredLocal(key) {
         try { return !!JSON.parse(hostWindow.localStorage.getItem(MM_RETIRED_KEY)||'{}')[key]; }
@@ -1745,12 +1778,13 @@
         const narrow=awmNarrowPanelWidth(vp),available=band.bottom-band.top;
         const margin=rect?0:8;
         const width=Math.min(vp.w-margin*2,rect?.width||(mobile?vp.w-24:narrow?.width||saved?.size||680));
-        const height=Math.min(rect?vp.h:available,rect?.height||(mobile?Math.min(622,saved?.size||622):available));
+        const height=Math.min(available,rect?.height||(mobile?Math.min(622,saved?.size||622):available));
         const left=rect?.left??narrow?.left??(saved?vp.x+(+saved.x||0)*vp.w:(dialog.id==='awmPresetSearchDialog'&&!mobile?vp.x+vp.w-width-8:vp.x+(vp.w-width)/2));
         const top=rect?.top??(saved?vp.y+(+saved.y||0)*vp.h:(mobile?band.top+(available-height)/2:band.top));
         Object.assign(dialog.style,{width:Math.max(0,width)+'px',height:Math.max(0,height)+'px',
             left:Math.max(vp.x+margin,Math.min(vp.x+vp.w-width-margin,left))+'px',
-            top:Math.max(rect?vp.y:band.top,Math.min((rect?vp.y+vp.h:band.bottom)-height,top))+'px'});
+            top:Math.max(band.top,Math.min(band.bottom-height,top))+'px'});
+        awmLayoutConstrain(dialog);
     }
     function mmToolDialogBind(dialog) {
         dialog.classList.add('awm-tool-dialog');
@@ -1758,7 +1792,12 @@
         hostWindow.addEventListener('resize',fit);
         hostWindow.visualViewport?.addEventListener('resize',fit);
         hostWindow.visualViewport?.addEventListener('scroll',fit);
+        const observer=hostWindow.ResizeObserver?new hostWindow.ResizeObserver(fit):null;
+        for(const selector of ['#top-bar','#top_bar','#send_form','#chat-input-container']) {
+            const element=root.querySelector(selector); if(element) observer?.observe(element);
+        }
         dialog.addEventListener('close',()=>{
+            observer?.disconnect();
             hostWindow.removeEventListener('resize',fit);
             hostWindow.visualViewport?.removeEventListener('resize',fit);
             hostWindow.visualViewport?.removeEventListener('scroll',fit);
@@ -2195,7 +2234,7 @@
         mmBackupStatus(settings.lastRun ? '上次清理：' + new Date(settings.lastRun).toLocaleString() : '尚未执行清理');
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
-    // END V9.1 isolated backup cleaner.
+    // END V9.2 isolated backup cleaner.
 
     function bindExtensionSettings(main) {
         mmBackupBind(main);
@@ -2684,7 +2723,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '9.1', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '9.2', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4338,7 +4377,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V9.1 loaded');
+        console.log('[鲜虾鱼板面] V9.2 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
