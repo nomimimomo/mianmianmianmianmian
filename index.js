@@ -2069,7 +2069,7 @@
         try{return action();}finally{root.removeEventListener('blur',stop,true);root.removeEventListener('focusout',stop,true);}
     }
 
-    async function mmPresetSaveEntry(native, expectedName, identifier, content, status) {
+    async function mmPresetSaveEntries(native, expectedName, drafts, status) {
         const settings=native?.promptManager?.serviceSettings||native?.oai_settings;
         if(!settings||typeof native?.getChatCompletionPreset!=='function')throw Error('当前酒馆缺少预设保存接口');
         const check=()=>{if(settings.preset_settings_openai!==expectedName)throw Error('当前预设已切换，编辑内容已保留');};
@@ -2089,10 +2089,13 @@
         status('正在保存当前预设…');
         await save(snapshot());
         check();
-        const next=snapshot(),prompt=next.prompts.find(p=>p.identifier===identifier);
-        if(!prompt||prompt.marker)throw Error('此条目不存在或不是可编辑正文');
-        prompt.content=content;
-        status('正在保存条目修改…');
+        const next=snapshot();
+        for(const [identifier,fields] of drafts){
+            const prompt=next.prompts.find(p=>p.identifier===identifier);
+            if(!prompt||prompt.marker)throw Error('修改的条目不存在或不是可编辑正文，草稿已保留');
+            for(const key of ['name','content'])if(Object.hasOwn(fields,key))prompt[key]=fields[key];
+        }
+        status('正在保存全部修改…');
         await save(next);
         check();
         for(const stored of next.prompts){
@@ -2104,6 +2107,8 @@
             if(button?.dataset.pmPrompt===String(stored.identifier)){
                 const body=root.getElementById('completion_prompt_manager_popup_entry_form_prompt');
                 if(body)body.value=stored.content||'';
+                const name=root.getElementById('completion_prompt_manager_popup_entry_form_name');
+                if(name)name.value=stored.name||'';
             }
         }
         hostWindow.SillyTavern?.getContext?.()?.saveSettingsDebounced?.();
@@ -2121,9 +2126,9 @@
         dialog.innerHTML=`<div class="awm-tool-shell">
             <header class="awm-tool-head"><h3 id="awmPresetSearchTitle">预设全文搜索</h3><button type="button" data-close aria-label="关闭搜索">×</button></header>
             <div class="awm-preset-search-bar"><input type="search" data-search placeholder="搜索名称和正文" aria-label="搜索预设名称和正文" autocomplete="off"><select data-scope aria-label="搜索范围"><option value="enabled">已启用</option><option value="all">全部</option></select></div>
-            <p class="awm-preset-summary" data-summary role="status" aria-live="polite">读取当前预设…</p>
+            <div class="awm-preset-summary-row"><p class="awm-preset-summary" data-summary role="status" aria-live="polite">读取当前预设…</p><button type="button" data-save disabled>保存</button></div><span class="awm-preset-save-status" data-save-status role="status"></span>
             <div class="awm-preset-results" data-results tabindex="0"></div>
-            <section class="awm-preset-view" data-view hidden><nav><button type="button" data-back>‹ 返回结果</button><div class="awm-preset-navigation"><button type="button" data-prev>上一个</button><span data-position aria-live="polite"></span><button type="button" data-next>下一个</button></div></nav><div class="awm-preset-edit-tools"><button type="button" data-edit>编辑</button><button type="button" data-save hidden>保存</button><button type="button" data-cancel-edit hidden>取消</button><span data-save-status role="status"></span></div><textarea data-editor hidden aria-label="编辑条目正文"></textarea><div class="awm-preset-full" data-full tabindex="0" aria-label="条目完整正文"></div></section>
+            <section class="awm-preset-view" data-view hidden><nav><button type="button" data-back>‹ 返回结果</button><div class="awm-preset-navigation"><button type="button" data-prev>上一个</button><span data-position aria-live="polite"></span><button type="button" data-next>下一个</button></div></nav><div class="awm-preset-full" data-full tabindex="0" aria-label="条目完整正文"></div></section>
         </div>`;
         (root.documentElement||root.body).appendChild(dialog);
         // Search interactions cannot bubble into the preset manager or its keyboard/save handlers.
@@ -2131,8 +2136,33 @@
         const q=key=>dialog.querySelector('[data-'+key+']');
         const el=(tag,className,text)=>{const node=root.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;};
         let native=null,ready=false,timer=null,viewId=null,marks=[],position=0,resultScroll=0;
-        let editing=false,saving=false,editName='',editId='',editOriginal='';
-        const keyword=()=>q('search').value.trim(),entries=()=>mmPresetEntries(native,q('scope').value);
+        let saving=false,draftName='';
+        const drafts=new Map();
+        const currentName=()=>(native?.promptManager?.serviceSettings||native?.oai_settings)?.preset_settings_openai;
+        const keyword=()=>q('search').value.trim(),entries=()=>{
+            if(drafts.size&&currentName()!==draftName)throw Error('预设已切换，请切回「'+draftName+'」保存未完成的修改');
+            return mmPresetEntries(native,q('scope').value).map(p=>({...p,...drafts.get(p.identifier)}));
+        };
+        const editField=(node,prompt,key)=>{
+            if(prompt.marker)return;
+            node.tabIndex=0;node.setAttribute('aria-label',key==='name'?'点击编辑条目名称':'点击编辑条目正文');
+            const begin=()=>{
+                if(saving)return;
+                const fieldPreset=currentName();
+                const input=el(key==='name'?'input':'textarea','awm-preset-inline-editor');
+                input.value=prompt[key]||'';input.setAttribute('aria-label',key==='name'?'条目名称':'条目正文');
+                if(key==='content'){input.rows=Math.max(8,input.value.split('\n').length);}
+                input.oninput=()=>{
+                    if(!drafts.size)draftName=fieldPreset;
+                    drafts.set(prompt.identifier,{...drafts.get(prompt.identifier),[key]:input.value});
+                    prompt[key]=input.value;
+                    q('save-status').textContent=drafts.size+' 个条目有未保存修改';
+                };
+                node.replaceWith(input);input.focus();
+                marks=marks.filter(mark=>mark.isConnected);jump(0);
+            };
+            node.onclick=begin;node.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();begin();}};
+        };
         const alive=()=>dialog.isConnected&&dialog.open;
         const fail=error=>{viewId=null;marks=[];q('view').hidden=true;q('results').hidden=false;q('summary').textContent=error.message;q('results').replaceChildren();};
         const jump=index=>{
@@ -2144,20 +2174,19 @@
             scroller.scrollTop+=a.top-b.top-Math.max(0,(scroller.clientHeight-a.height)/2);
         };
         const showEntry=(identifier,index=0,focusView=true)=>{
-            if(editing||saving)return;
+            if(saving)return;
             try{
                 const prompt=entries().find(x=>x.identifier===identifier);
                 if(!prompt){viewId=null;q('view').hidden=true;q('results').hidden=false;search();return;}
-                q('edit').disabled=!!prompt.marker;
                 viewId=identifier;marks=[];position=0;q('full').replaceChildren();
                 const title=el('h4','awm-preset-full-title');if(prompt.name)mmPresetHighlight(title,prompt.name,keyword(),marks);else title.textContent='未命名条目';
                 const body=el('div','awm-preset-body');mmPresetHighlight(body,prompt.content,keyword(),marks);
-                q('full').append(title,body);if(!q('results').hidden)resultScroll=q('results').scrollTop;q('results').hidden=true;q('view').hidden=false;
+                q('full').append(title,body);editField(title,prompt,'name');editField(body,prompt,'content');if(!q('results').hidden)resultScroll=q('results').scrollTop;q('results').hidden=true;q('view').hidden=false;
                 jump(Math.min(index,Math.max(0,marks.length-1)));if(focusView)q('full').focus({preventScroll:true});
             }catch(error){fail(error);}
         };
         const search=()=>{
-            if(!alive()||!ready||editing||saving)return;
+            if(!alive()||!ready||saving)return;
             hostWindow.clearTimeout(timer);
             try{
                 const text=keyword(),prompts=entries();
@@ -2183,40 +2212,28 @@
             }catch(error){fail(error);}
         };
 
-        const editMode=value=>{
-            editing=value;q('editor').hidden=!value;q('full').hidden=value;
-            q('edit').hidden=value;q('save').hidden=q('cancel-edit').hidden=!value;
-            for(const key of ['search','scope','back','prev','next'])q(key).disabled=value;
-        };
-        q('edit').onclick=()=>{
-            const prompt=entries().find(p=>p.identifier===viewId);if(!prompt||prompt.marker)return;
-            editName=(native.promptManager?.serviceSettings||native.oai_settings).preset_settings_openai;
-            editId=viewId;editOriginal=String(prompt.content||'');q('editor').value=editOriginal;
-            q('save-status').textContent='';editMode(true);q('editor').focus();
-        };
-        q('cancel-edit').onclick=()=>{
-            if(saving)return;
-            if(q('editor').value!==editOriginal&&!hostWindow.confirm('放弃此次未保存的修改？'))return;
-            editMode(false);showEntry(editId);
-        };
         q('save').onclick=async()=>{
-            if(saving)return;saving=true;q('save').disabled=q('cancel-edit').disabled=true;q('editor').readOnly=true;
+            if(saving||!ready)return;
+            const id=viewId,name=drafts.size?draftName:currentName();
+            saving=true;
+            const controls=[...dialog.querySelectorAll('button,input,select,textarea')];
+            const disabled=controls.map(node=>node.disabled);controls.forEach(node=>node.disabled=true);
             try{
-                await mmPresetSaveEntry(native,editName,editId,q('editor').value,text=>q('save-status').textContent=text);
-                editMode(false);saving=false;search();showEntry(editId);
+                await mmPresetSaveEntries(native,name,new Map(drafts),text=>q('save-status').textContent=text);
+                drafts.clear();draftName='';saving=false;search();if(id!==null)showEntry(id);
             }catch(error){q('save-status').textContent='保存未完成：'+error.message;mmLog('presetEdit','preset','failed',error.message);}
-            finally{saving=false;q('save').disabled=q('cancel-edit').disabled=false;q('editor').readOnly=false;}
+            finally{saving=false;controls.forEach((node,i)=>node.disabled=disabled[i]);}
         };
 
         q('search').oninput=()=>{hostWindow.clearTimeout(timer);if(!keyword())search();else timer=hostWindow.setTimeout(search,100);};
         q('scope').onchange=search;
         q('back').onclick=()=>{viewId=null;marks=[];q('view').hidden=true;q('results').hidden=false;q('results').scrollTop=resultScroll;q('results').focus({preventScroll:true});};
         q('prev').onclick=()=>jump(position-1);q('next').onclick=()=>jump(position+1);
-        const closeSearch=()=>{if(saving)return;if(editing&&q('editor').value!==editOriginal&&!hostWindow.confirm('关闭并放弃未保存的修改？'))return;restoreOnClose=dialog.contains(root.activeElement);dialog.close();};
+        const closeSearch=()=>{if(saving)return;if(drafts.size&&!hostWindow.confirm('关闭并放弃所有条目的未保存修改？'))return;restoreOnClose=dialog.contains(root.activeElement);dialog.close();};
         q('close').onclick=closeSearch;
         dialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();closeSearch();}});
         const context=hostWindow.SillyTavern?.getContext?.(),event=context?.eventTypes?.OAI_PRESET_CHANGED_AFTER||context?.event_types?.OAI_PRESET_CHANGED_AFTER;
-        const changed=()=>{if(!alive()||editing||saving)return;if(viewId!==null)showEntry(viewId,position,false);else search();};
+        const changed=()=>{if(!alive()||saving||dialog.querySelector('.awm-preset-inline-editor'))return;if(viewId!==null)showEntry(viewId,position,false);else search();};
         if(event)context.eventSource?.on?.(event,changed);
         let editTimer=null;
         const edited=event=>{
@@ -2245,7 +2262,7 @@
             });
         },{once:true});
         mmPresetWithoutBlur(focus,()=>{dialog.show();mmToolDialogBind(dialog);q('search').focus({preventScroll:true});});
-        native=await mmPresetNative();ready=true;search();
+        native=await mmPresetNative();ready=true;q('save').disabled=false;search();
     }
     function mmPresetSearchAttach() {
         if(!mmFeatures().search){root.getElementById('awmPresetSearchButton')?.remove();return;}
@@ -3032,7 +3049,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '10.2', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '10.3', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4695,7 +4712,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V10.2 loaded');
+        console.log('[鲜虾鱼板面] V10.3 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
