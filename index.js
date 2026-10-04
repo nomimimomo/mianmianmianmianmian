@@ -316,18 +316,52 @@
     function awmLayoutDevice() { return hostWindow.innerWidth <= 600 ? 'mobile' : 'desktop'; }
     function awmLayoutState() {
         try {
-            const all = JSON.parse(hostWindow.localStorage.getItem(AWM_LAYOUT_KEY) || '{}');
+            const all = JSON.parse(hostWindow.SillyTavern?.getContext?.()?.accountStorage?.getItem?.(AWM_LAYOUT_KEY) || hostWindow.localStorage.getItem(AWM_LAYOUT_KEY) || '{}');
             const state = all[awmLayoutDevice()] || {};
             return { locked: !!state.locked, slot: [1, 2, 3].includes(+state.slot) ? +state.slot : 1, slots: state.slots || {}, current: state.current || null };
         } catch (_) { return { locked: false, slot: 1, slots: {} }; }
     }
     function awmLayoutWrite(state) {
         try {
-            const all = JSON.parse(hostWindow.localStorage.getItem(AWM_LAYOUT_KEY) || '{}');
+            const all = JSON.parse(hostWindow.SillyTavern?.getContext?.()?.accountStorage?.getItem?.(AWM_LAYOUT_KEY) || hostWindow.localStorage.getItem(AWM_LAYOUT_KEY) || '{}');
             all[awmLayoutDevice()] = state;
             hostWindow.localStorage.setItem(AWM_LAYOUT_KEY, JSON.stringify(all));
+            const ctx=hostWindow.SillyTavern?.getContext?.();
+            if(ctx?.accountStorage?.setItem){ctx.accountStorage.setItem(AWM_LAYOUT_KEY,JSON.stringify(all));ctx.saveSettingsDebounced?.();}
         } catch (error) { toast('位置保存失败：' + error.message, 'error'); }
     }
+
+    function mmFeatureSlot(key) {
+        try { const value=JSON.parse(hostWindow.SillyTavern?.getContext?.()?.accountStorage?.getItem?.(AWM_LAYOUT_KEY+'.bindings')||'{}')[key];return [1,2,3].includes(+value)?+value:0; }catch{return 0;}
+    }
+    function mmFeaturePosition(key) {
+        const state=awmLayoutState(),slot=mmFeatureSlot(key);
+        return slot ? state.slots[slot]||null : null;
+    }
+    function mmFeatureLayoutBind(main) {
+        for(const [id,key] of [['awmEditorEnabled','mianmian'],['awmStylesEnabled','styles'],['awmSearchEnabled','search'],['awmBackupEnabled','backup']]){
+            const label=main.querySelector('#'+id)?.closest('label');if(!label)continue;
+            const row=root.createElement('div');row.className='awm-feature-position-row';label.before(row);row.append(label);
+            const select=root.createElement('select');select.setAttribute('aria-label',label.textContent.trim()+'位置');
+            select.innerHTML='<option value="0">默认</option><option value="1">位置 1</option><option value="2">位置 2</option><option value="3">位置 3</option>';
+            select.value=String(mmFeatureSlot(key));row.append(select);
+            select.onchange=()=>{
+                try{
+                    const ctx=hostWindow.SillyTavern?.getContext?.();
+                    if(!ctx?.accountStorage?.setItem)throw Error('酒馆账号设置尚未就绪，请稍后重试');
+                    const all=JSON.parse(ctx.accountStorage.getItem(AWM_LAYOUT_KEY+'.bindings')||'{}');
+                    all[key]=+select.value;
+                    ctx.accountStorage.setItem(AWM_LAYOUT_KEY+'.bindings',JSON.stringify(all));awmLayoutWrite(awmLayoutState());ctx.saveSettingsDebounced?.();
+                    if(+select.value&&!mmFeaturePosition(key))toast('此位置尚未保存，请在面板设置中保存到此槽','warning');
+                }catch(error){toast('位置绑定保存失败：'+error.message,'error');}
+            };
+        }
+    }
+    function mmApplyPagePosition(page) {
+        const value=mmFeaturePosition(page);
+        if(value)awmLayoutApply(value);else awmLayoutRestore();
+    }
+
     function awmLayoutViewport() {
         const vv = hostWindow.visualViewport;
         return { x: vv?.offsetLeft || 0, y: vv?.offsetTop || 0, w: vv?.width || hostWindow.innerWidth, h: vv?.height || hostWindow.innerHeight };
@@ -574,6 +608,7 @@
     // 同时用 window.visualViewport（存在的话）代替 innerWidth/innerHeight，
     // 顺便解决手机地址栏收起/展开导致可视视口和布局视口不一致的问题。
     function centerPanel() {
+        if(mmFeaturePosition(awmCurrentPage)){mmApplyPagePosition(awmCurrentPage);return;}
         if (awmLayoutState().locked || awmLayoutState().current) { awmLayoutRestore(); return; }
         const panel = root.getElementById(PANEL_ID);
         if (!panel || panel.style.display === 'none') return;
@@ -643,7 +678,7 @@
         mmLog('panel', 'panel', 'open');
         centerPanel();
         // 面板首次插入 DOM 时字体/图片等可能还没完成排版，下一帧再校正一次更保险。
-        (hostWindow.requestAnimationFrame || hostWindow.setTimeout)(() => { if (awmLayoutState().locked) awmLayoutRestore(); else if (awmLayoutState().current) awmLayoutRestore(); else centerPanel(); }, 16);
+        (hostWindow.requestAnimationFrame || hostWindow.setTimeout)(() => { if(mmFeaturePosition(awmCurrentPage))mmApplyPagePosition(awmCurrentPage);else if (awmLayoutState().locked || awmLayoutState().current) awmLayoutRestore(); else centerPanel(); }, 16);
         bindViewportListeners();
     }
 
@@ -695,7 +730,7 @@
         if (page === 'mianmian') renderMian(main);
         if (page === 'styles') renderStyles(main);
         if (page === 'settings') renderPanelSettings(main);
-        awmSyncNav(); awmFixContrast();
+        awmSyncNav(); awmFixContrast(); mmApplyPagePosition(page);
     }
 
     // ============================================================
@@ -1916,13 +1951,14 @@
         if (!dialog.open) return;
         const vp=awmLayoutViewport(),band=awmLayoutVerticalBand(),mobile=awmLayoutDevice()==='mobile';
         const main=root.getElementById(PANEL_ID),visible=main&&hostWindow.getComputedStyle(main).display!=='none';
-        const rect=visible?main.getBoundingClientRect():null;
-        const state=awmLayoutState(),saved=state.locked?state.slots[state.slot]:state.current;
+        const bound=mmFeaturePosition(dialog.id==='awmPresetSearchDialog'?'search':'backup');
+        const rect=!bound&&visible?main.getBoundingClientRect():null;
+        const state=awmLayoutState(),saved=bound||(state.locked?state.slots[state.slot]:state.current);
         const narrow=awmNarrowPanelWidth(vp),available=band.bottom-band.top;
         const margin=rect?0:8;
-        const width=Math.min(vp.w-margin*2,rect?.width||(mobile?vp.w-24:narrow?.width||saved?.size||680));
+        const width=Math.min(vp.w-margin*2,rect?.width||(mobile?vp.w-24:(bound?.size||narrow?.width||saved?.size||680)));
         const height=Math.min(available,rect?.height||(mobile?Math.min(622,saved?.size||622):available));
-        const left=rect?.left??narrow?.left??(saved?vp.x+(+saved.x||0)*vp.w:(dialog.id==='awmPresetSearchDialog'&&!mobile?vp.x+vp.w-width-8:vp.x+(vp.w-width)/2));
+        const left=rect?.left??(bound?vp.x+(+bound.x||0)*vp.w:null)??narrow?.left??(saved?vp.x+(+saved.x||0)*vp.w:(dialog.id==='awmPresetSearchDialog'&&!mobile?vp.x+vp.w-width-8:vp.x+(vp.w-width)/2));
         const top=rect?.top??(saved?vp.y+(+saved.y||0)*vp.h:(mobile?band.top+(available-height)/2:band.top));
         Object.assign(dialog.style,{width:Math.max(0,width)+'px',height:Math.max(0,height)+'px',
             left:Math.max(vp.x+margin,Math.min(vp.x+vp.w-width-margin,left))+'px',
@@ -2032,6 +2068,49 @@
         root.addEventListener('blur',stop,true);root.addEventListener('focusout',stop,true);
         try{return action();}finally{root.removeEventListener('blur',stop,true);root.removeEventListener('focusout',stop,true);}
     }
+
+    async function mmPresetSaveEntry(native, expectedName, identifier, content, status) {
+        const settings=native?.promptManager?.serviceSettings||native?.oai_settings;
+        if(!settings||typeof native?.getChatCompletionPreset!=='function')throw Error('当前酒馆缺少预设保存接口');
+        const check=()=>{if(settings.preset_settings_openai!==expectedName)throw Error('当前预设已切换，编辑内容已保留');};
+        const snapshot=()=>{
+            check();
+            const value=structuredClone(native.getChatCompletionPreset(settings));
+            value.prompts=value.prompts.map(prompt=>({...prompt,...mmPresetReadCurrentFields(prompt)}));
+            return value;
+        };
+        const save=async value=>{
+            const response=await mmSettingsFetch('/api/presets/save',{apiId:'openai',name:expectedName,preset:value});
+            const result=await response.json();
+            if(result.name!==expectedName)throw Error('预设保存返回的名称不一致');
+            const index=native.openai_setting_names?.[expectedName];
+            if(index!==undefined&&native.openai_settings)native.openai_settings[index]=structuredClone(value);
+        };
+        status('正在保存当前预设…');
+        await save(snapshot());
+        check();
+        const next=snapshot(),prompt=next.prompts.find(p=>p.identifier===identifier);
+        if(!prompt||prompt.marker)throw Error('此条目不存在或不是可编辑正文');
+        prompt.content=content;
+        status('正在保存条目修改…');
+        await save(next);
+        check();
+        for(const stored of next.prompts){
+            const live=settings.prompts.find(p=>p.identifier===stored.identifier);
+            if(live)Object.assign(live,stored);
+            const quick=root.getElementById(stored.identifier+'_prompt_quick_edit_textarea');
+            if(quick)quick.value=stored.content||'';
+            const button=root.getElementById('completion_prompt_manager_popup_entry_form_save');
+            if(button?.dataset.pmPrompt===String(stored.identifier)){
+                const body=root.getElementById('completion_prompt_manager_popup_entry_form_prompt');
+                if(body)body.value=stored.content||'';
+            }
+        }
+        hostWindow.SillyTavern?.getContext?.()?.saveSettingsDebounced?.();
+        native.promptManager?.render?.();
+        status('已保存');
+    }
+
     async function mmPresetSearchOpen() {
         if(!mmFeatures().search)return;
         const existing=root.getElementById('awmPresetSearchDialog');
@@ -2044,7 +2123,7 @@
             <div class="awm-preset-search-bar"><input type="search" data-search placeholder="搜索名称和正文" aria-label="搜索预设名称和正文" autocomplete="off"><select data-scope aria-label="搜索范围"><option value="enabled">已启用</option><option value="all">全部</option></select></div>
             <p class="awm-preset-summary" data-summary role="status" aria-live="polite">读取当前预设…</p>
             <div class="awm-preset-results" data-results tabindex="0"></div>
-            <section class="awm-preset-view" data-view hidden><nav><button type="button" data-back>‹ 返回结果</button><div class="awm-preset-navigation"><button type="button" data-prev>上一个</button><span data-position aria-live="polite"></span><button type="button" data-next>下一个</button></div></nav><div class="awm-preset-full" data-full tabindex="0" aria-label="条目完整正文"></div></section>
+            <section class="awm-preset-view" data-view hidden><nav><button type="button" data-back>‹ 返回结果</button><div class="awm-preset-navigation"><button type="button" data-prev>上一个</button><span data-position aria-live="polite"></span><button type="button" data-next>下一个</button></div></nav><div class="awm-preset-edit-tools"><button type="button" data-edit>编辑</button><button type="button" data-save hidden>保存</button><button type="button" data-cancel-edit hidden>取消</button><span data-save-status role="status"></span></div><textarea data-editor hidden aria-label="编辑条目正文"></textarea><div class="awm-preset-full" data-full tabindex="0" aria-label="条目完整正文"></div></section>
         </div>`;
         (root.documentElement||root.body).appendChild(dialog);
         // Search interactions cannot bubble into the preset manager or its keyboard/save handlers.
@@ -2052,6 +2131,7 @@
         const q=key=>dialog.querySelector('[data-'+key+']');
         const el=(tag,className,text)=>{const node=root.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;};
         let native=null,ready=false,timer=null,viewId=null,marks=[],position=0,resultScroll=0;
+        let editing=false,saving=false,editName='',editId='',editOriginal='';
         const keyword=()=>q('search').value.trim(),entries=()=>mmPresetEntries(native,q('scope').value);
         const alive=()=>dialog.isConnected&&dialog.open;
         const fail=error=>{viewId=null;marks=[];q('view').hidden=true;q('results').hidden=false;q('summary').textContent=error.message;q('results').replaceChildren();};
@@ -2064,9 +2144,11 @@
             scroller.scrollTop+=a.top-b.top-Math.max(0,(scroller.clientHeight-a.height)/2);
         };
         const showEntry=(identifier,index=0,focusView=true)=>{
+            if(editing||saving)return;
             try{
                 const prompt=entries().find(x=>x.identifier===identifier);
                 if(!prompt){viewId=null;q('view').hidden=true;q('results').hidden=false;search();return;}
+                q('edit').disabled=!!prompt.marker;
                 viewId=identifier;marks=[];position=0;q('full').replaceChildren();
                 const title=el('h4','awm-preset-full-title');if(prompt.name)mmPresetHighlight(title,prompt.name,keyword(),marks);else title.textContent='未命名条目';
                 const body=el('div','awm-preset-body');mmPresetHighlight(body,prompt.content,keyword(),marks);
@@ -2075,7 +2157,7 @@
             }catch(error){fail(error);}
         };
         const search=()=>{
-            if(!alive()||!ready)return;
+            if(!alive()||!ready||editing||saving)return;
             hostWindow.clearTimeout(timer);
             try{
                 const text=keyword(),prompts=entries();
@@ -2100,15 +2182,41 @@
                 q('results').append(fragment);q('results').scrollTop=0;
             }catch(error){fail(error);}
         };
+
+        const editMode=value=>{
+            editing=value;q('editor').hidden=!value;q('full').hidden=value;
+            q('edit').hidden=value;q('save').hidden=q('cancel-edit').hidden=!value;
+            for(const key of ['search','scope','back','prev','next'])q(key).disabled=value;
+        };
+        q('edit').onclick=()=>{
+            const prompt=entries().find(p=>p.identifier===viewId);if(!prompt||prompt.marker)return;
+            editName=(native.promptManager?.serviceSettings||native.oai_settings).preset_settings_openai;
+            editId=viewId;editOriginal=String(prompt.content||'');q('editor').value=editOriginal;
+            q('save-status').textContent='';editMode(true);q('editor').focus();
+        };
+        q('cancel-edit').onclick=()=>{
+            if(saving)return;
+            if(q('editor').value!==editOriginal&&!hostWindow.confirm('放弃此次未保存的修改？'))return;
+            editMode(false);showEntry(editId);
+        };
+        q('save').onclick=async()=>{
+            if(saving)return;saving=true;q('save').disabled=q('cancel-edit').disabled=true;q('editor').readOnly=true;
+            try{
+                await mmPresetSaveEntry(native,editName,editId,q('editor').value,text=>q('save-status').textContent=text);
+                editMode(false);saving=false;search();showEntry(editId);
+            }catch(error){q('save-status').textContent='保存未完成：'+error.message;mmLog('presetEdit','preset','failed',error.message);}
+            finally{saving=false;q('save').disabled=q('cancel-edit').disabled=false;q('editor').readOnly=false;}
+        };
+
         q('search').oninput=()=>{hostWindow.clearTimeout(timer);if(!keyword())search();else timer=hostWindow.setTimeout(search,100);};
         q('scope').onchange=search;
         q('back').onclick=()=>{viewId=null;marks=[];q('view').hidden=true;q('results').hidden=false;q('results').scrollTop=resultScroll;q('results').focus({preventScroll:true});};
         q('prev').onclick=()=>jump(position-1);q('next').onclick=()=>jump(position+1);
-        const closeSearch=()=>{restoreOnClose=dialog.contains(root.activeElement);dialog.close();};
+        const closeSearch=()=>{if(saving)return;if(editing&&q('editor').value!==editOriginal&&!hostWindow.confirm('关闭并放弃未保存的修改？'))return;restoreOnClose=dialog.contains(root.activeElement);dialog.close();};
         q('close').onclick=closeSearch;
         dialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();closeSearch();}});
         const context=hostWindow.SillyTavern?.getContext?.(),event=context?.eventTypes?.OAI_PRESET_CHANGED_AFTER||context?.event_types?.OAI_PRESET_CHANGED_AFTER;
-        const changed=()=>{if(!alive())return;if(viewId!==null)showEntry(viewId,position,false);else search();};
+        const changed=()=>{if(!alive()||editing||saving)return;if(viewId!==null)showEntry(viewId,position,false);else search();};
         if(event)context.eventSource?.on?.(event,changed);
         let editTimer=null;
         const edited=event=>{
@@ -2414,6 +2522,7 @@
         mmFeatureApply();
     }
     function bindExtensionSettings(main) {
+        mmFeatureLayoutBind(main);
         for(const [id,key] of [['awmEditorEnabled','editor'],['awmStylesEnabled','styles'],['awmSearchEnabled','search']]) {
             const input=main.querySelector('#'+id);input.checked=mmFeatures()[key];
             input.onchange=()=>{try{mmFeatureSet(key,input.checked);}catch(error){input.checked=mmFeatures()[key];toast(error.message,'warning');}};
@@ -2923,7 +3032,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '10.1', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '10.2', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4586,7 +4695,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V10.1 loaded');
+        console.log('[鲜虾鱼板面] V10.2 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
