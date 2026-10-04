@@ -1,6 +1,7 @@
 'use strict';
 
 (function () {
+    const AWM_SCRIPT_URL = document.currentScript?.src || '';
     const ID = 'ame-style-management-v05';
     const PANEL_ID = 'awm-panel-v03';
     const STYLE_ID = 'awm-style-v05';
@@ -1006,7 +1007,7 @@
         const main=root.getElementById('awmMain'), oldData=load(), old=id?oldData.styles.find(x=>x.id===id):null;
         main.innerHTML=`<div class="awm-form awm-style-editor" style="height:100%;display:flex;flex-direction:column">
             <div class="awm-editor-top"><input class="awm-input awm-style-name" id="fName" placeholder="文风名称" value="${esc(old?.name||'')}">
-                <div class="awm-actions" style="margin:0"><button class="awm-btn" id="fShowReplace" type="button" aria-expanded="false">替换</button><label class="awm-btn" style="cursor:pointer">导入<input id="fFile" type="file" accept=".txt,.docx" style="display:none"></label><button class="awm-btn" id="fCancel" type="button">取消</button><button class="awm-btn" id="fSave" type="button">完成</button></div></div>
+                <div class="awm-actions" style="margin:0"><button class="awm-btn" id="fShowReplace" type="button" aria-expanded="false">替换</button><label class="awm-btn" style="cursor:pointer">导入<input id="fFile" type="file" accept=".txt,.docx,.pdf" style="display:none"></label><button class="awm-btn" id="fCancel" type="button">取消</button><button class="awm-btn" id="fSave" type="button">完成</button></div></div>
             <div class="awm-mm-style-replace" id="fReplacePanel" hidden><input class="awm-input" id="awmStyleFind" placeholder="查找正文词语"><input class="awm-input" id="awmStyleReplacement" placeholder="替换为"><button class="awm-btn" id="awmStyleReplaceAll" type="button">替换文风库全部正文</button></div>
             <input class="awm-input" id="fAuthor" placeholder="作者（可留空）" value="${esc(old?.author||'')}">
             ${makeTagEditor(old?.tags||[])}
@@ -2156,7 +2157,7 @@
                     if(!drafts.size)draftName=fieldPreset;
                     drafts.set(prompt.identifier,{...drafts.get(prompt.identifier),[key]:input.value});
                     prompt[key]=input.value;
-                    q('save-status').textContent=drafts.size+' 个条目有未保存修改';
+                    q('save-status').textContent='';q('save').textContent='保存';
                 };
                 node.replaceWith(input);input.focus();
                 marks=marks.filter(mark=>mark.isConnected);jump(0);
@@ -2191,14 +2192,14 @@
             try{
                 const text=keyword(),prompts=entries();
                 viewId=null;marks=[];q('view').hidden=true;q('results').hidden=false;q('results').replaceChildren();
-                if(!text){q('summary').textContent='输入关键词，搜索当前预设的名称和正文。';return;}
                 const fragment=root.createDocumentFragment();let count=0,items=0;
                 for(const prompt of prompts){
-                    const hits=mmPresetHits(prompt,text);if(!hits.length)continue;
+                    const hits=text?mmPresetHits(prompt,text):[];if(text&&!hits.length)continue;
                     count+=hits.length;items++;
                     const row=el('article','awm-preset-result'),head=el('div','awm-preset-result-head');
                     const name=el('button','awm-preset-entry-name');name.type='button';mmPresetHighlight(name,prompt.name||'未命名条目',text);
-                    name.onclick=()=>showEntry(prompt.identifier);head.append(name,el('span','awm-preset-hit-count',hits.length+' 处'));row.append(head);
+                    name.onclick=()=>showEntry(prompt.identifier);head.append(name);if(text)head.append(el('span','awm-preset-hit-count',hits.length+' 处'));row.append(head);
+                    if(!text){const preview=el('button','awm-preset-hit',String(prompt.content||'').slice(0,160)||'（无正文）');preview.type='button';preview.onclick=()=>showEntry(prompt.identifier);row.append(preview);}
                     mmPresetHitGroups(prompt,hits).forEach(({hit,index})=>{
                         const link=el('button','awm-preset-hit');link.type='button';link.setAttribute('aria-label',(hit.source==='name'?'名称':'正文')+'第 '+(index+1)+' 处命中，查看完整正文');
                         if(hit.source==='name')link.append(el('span','awm-preset-name-label','名称 · '));
@@ -2206,8 +2207,8 @@
                         link.onclick=()=>showEntry(prompt.identifier,index);row.append(link);
                     });fragment.append(row);
                 }
-                q('summary').textContent=items+' 个条目 · '+count+' 处命中';
-                if(!items)fragment.append(el('p','awm-preset-empty','没有匹配的条目。'));
+                q('summary').textContent=text?items+' 个条目 · '+count+' 处命中':'当前预设 · '+items+' 个条目';
+                if(!items)fragment.append(el('p','awm-preset-empty',text?'没有匹配的条目。':'当前范围没有条目。'));
                 q('results').append(fragment);q('results').scrollTop=0;
             }catch(error){fail(error);}
         };
@@ -2219,10 +2220,10 @@
             const controls=[...dialog.querySelectorAll('button,input,select,textarea')];
             const disabled=controls.map(node=>node.disabled);controls.forEach(node=>node.disabled=true);
             try{
-                await mmPresetSaveEntries(native,name,new Map(drafts),text=>q('save-status').textContent=text);
-                drafts.clear();draftName='';saving=false;search();if(id!==null)showEntry(id);
+                await mmPresetSaveEntries(native,name,new Map(drafts),text=>{q('save').textContent=text==='已保存'?'保存':'保存中…';});
+                drafts.clear();draftName='';q('save-status').textContent='';saving=false;search();if(id!==null)showEntry(id);
             }catch(error){q('save-status').textContent='保存未完成：'+error.message;mmLog('presetEdit','preset','failed',error.message);}
-            finally{saving=false;controls.forEach((node,i)=>node.disabled=disabled[i]);}
+            finally{saving=false;q('save').textContent='保存';controls.forEach((node,i)=>node.disabled=disabled[i]);}
         };
 
         q('search').oninput=()=>{hostWindow.clearTimeout(timer);if(!keyword())search();else timer=hostWindow.setTimeout(search,100);};
@@ -2676,187 +2677,63 @@
     //   /lib/pdf.mjs       -> PDF
     // 不依赖 esm.sh / jsDelivr，也不要求 window.JSZip / window.pdfjsLib
     // ============================================================
-    let jsZipPromise = null;
-    let pdfJsPromise = null;
-
-    function getBaseUrl() {
-        try {
-            return new URL('.', hostWindow.location.href).href;
-        } catch (_) {
-            return '/';
-        }
-    }
-
-    function loadScriptOnce(src, test) {
-        return new Promise((resolve, reject) => {
-            try {
-                if (test()) {
-                    resolve();
-                    return;
-                }
-
-                const existing = [...root.scripts].find(s => s.src && s.src.includes(src));
-                if (existing) {
-                    existing.addEventListener('load', () => resolve(), { once: true });
-                    existing.addEventListener('error', () => reject(new Error('加载失败：' + src)), { once: true });
-                    // 已经加载过但没有触发 load 的情况，稍后再检查一次。
-                    hostWindow.setTimeout(() => {
-                        if (test()) resolve();
-                    }, 100);
-                    return;
-                }
-
-                const script = root.createElement('script');
-                script.src = src;
-                script.async = true;
-                script.onload = () => test()
-                    ? resolve()
-                    : reject(new Error('脚本已加载但没有找到需要的库：' + src));
-                script.onerror = () => reject(new Error('酒馆内置库加载失败：' + src));
-                (root.head || root.documentElement).appendChild(script);
-            } catch (err) {
-                reject(err);
-            }
-        });
-    }
-
-    async function ensureJSZip() {
-        if (hostWindow.JSZip?.loadAsync) return hostWindow.JSZip;
-        if (jsZipPromise) return jsZipPromise;
-
-        jsZipPromise = (async () => {
-            const candidates = [
-                getBaseUrl() + 'lib/jszip.min.js',
-                '/lib/jszip.min.js'
-            ];
-
-            let lastErr = null;
-            for (const src of candidates) {
-                try {
-                    await loadScriptOnce(src, () => !!hostWindow.JSZip?.loadAsync);
-                    if (hostWindow.JSZip?.loadAsync) return hostWindow.JSZip;
-                } catch (err) {
-                    lastErr = err;
-                }
-            }
-
-            throw new Error(
-                '无法加载酒馆自带的 JSZip（已尝试 /lib/jszip.min.js）。' +
-                (lastErr?.message ? ' ' + lastErr.message : '')
-            );
-        })();
-
-        try {
-            return await jsZipPromise;
-        } catch (err) {
-            jsZipPromise = null;
-            throw err;
-        }
-    }
-
-    async function ensurePdfJs() {
-        if (hostWindow.pdfjsLib?.getDocument) return hostWindow.pdfjsLib;
-        if (pdfJsPromise) return pdfJsPromise;
-
-        pdfJsPromise = (async () => {
-            const candidates = [
-                getBaseUrl() + 'lib/pdf.mjs',
-                '/lib/pdf.mjs'
-            ];
-
-            let lastErr = null;
-            for (const src of candidates) {
-                try {
-                    // SillyTavern 自己的 PDF.js 是 ES module，所以这里用动态 import。
-                    const mod = await import(src);
-                    const pdfjs = mod?.pdfjsLib || mod?.default || mod;
-                    if (pdfjs?.getDocument) {
-                        hostWindow.pdfjsLib = pdfjs;
-                        return pdfjs;
-                    }
-                } catch (err) {
-                    lastErr = err;
-                }
-            }
-
-            // 某些酒馆版本已经通过 utils.js 初始化成全局变量。
-            if (hostWindow.pdfjsLib?.getDocument) return hostWindow.pdfjsLib;
-
-            throw new Error(
-                '无法加载酒馆自带的 PDF.js（已尝试 /lib/pdf.mjs）。' +
-                (lastErr?.message ? ' ' + lastErr.message : '')
-            );
-        })();
-
-        try {
-            return await pdfJsPromise;
-        } catch (err) {
-            pdfJsPromise = null;
-            throw err;
-        }
-    }
-
-    async function readDocx(file) {
-        const JSZip = await ensureJSZip();
-        const zip = await JSZip.loadAsync(await file.arrayBuffer());
-        const xmlFile = zip.file('word/document.xml');
-        if (!xmlFile) throw new Error('DOCX 中没有找到正文');
-
-        const xml = await xmlFile.async('text');
-        const parsed = new DOMParser().parseFromString(xml, 'application/xml');
-        if (parsed.querySelector('parsererror')) {
-            throw new Error('DOCX 正文解析失败');
-        }
-
-        return [...parsed.getElementsByTagName('w:p')].map(p => {
-            const parts = [];
-
-            [...p.childNodes].forEach(node => {
-                if (node.nodeType !== 1) return;
-
-                if (node.localName === 'r') {
-                    [...node.childNodes].forEach(n => {
-                        if (n.localName === 't') parts.push(n.textContent || '');
-                        else if (n.localName === 'tab') parts.push('\t');
-                        else if (n.localName === 'br' || n.localName === 'cr') parts.push('\n');
-                    });
-                } else if (node.localName === 'hyperlink') {
-                    [...node.getElementsByTagName('w:t')]
-                        .forEach(t => parts.push(t.textContent || ''));
-                }
+    let mammothPromise=null;
+    function getBaseUrl(){return new URL('.',hostWindow.location.href).href;}
+    async function ensureMammoth(){
+        if(hostWindow.mammoth?.extractRawText)return hostWindow.mammoth;
+        if(mammothPromise)return mammothPromise;
+        mammothPromise=(async()=>{
+            const script=AWM_SCRIPT_URL||[...root.scripts].map(s=>s.src).find(src=>/\/(?:鲜虾鱼板面|mianmian|mianmianmianmianmian)\/index\.js(?:\?|$)/.test(decodeURI(src)));
+            if(!script)throw Error('无法确定鱼板面安装目录，请刷新酒馆后重试');
+            const url=new URL('vendor/mammoth.browser.js',script).href;
+            await new Promise((resolve,reject)=>{
+                const node=root.createElement('script');let timer;
+                const finish=error=>{hostWindow.clearTimeout(timer);node.onload=node.onerror=null;if(error){node.remove();reject(error);}else resolve();};
+                node.src=url;node.onload=()=>finish(hostWindow.mammoth?.extractRawText?null:Error('DOCX 解析器未正确初始化'));
+                node.onerror=()=>finish(Error('无法加载 DOCX 解析器，请确认更新时包含 vendor 文件夹'));
+                timer=hostWindow.setTimeout(()=>finish(Error('DOCX 解析器加载超时，请重试')),15000);
+                (root.head||root.documentElement).appendChild(node);
             });
-
-            return parts.join('');
-        }).join('\n');
+            return hostWindow.mammoth;
+        })();
+        try{return await mammothPromise;}catch(error){mammothPromise=null;throw error;}
     }
-
-    async function readPdf(file) {
-        const pdfjs = await ensurePdfJs();
-        const data = new Uint8Array(await file.arrayBuffer());
-
-        const loadingTask = pdfjs.getDocument({ data });
-        const pdf = await loadingTask.promise;
-        const pages = [];
-
-        try {
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const textContent = await page.getTextContent();
-
-                pages.push(
-                    textContent.items
-                        .map(item => item.str || '')
-                        .join(' ')
-                );
-
-                page.cleanup?.();
+    async function readDocx(file){
+        const mammoth=await ensureMammoth();
+        const result=await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});
+        if(!result.value.trim())throw Error('DOCX 未提取到文字，请确认文档正文不是图片');
+        return result.value;
+    }
+    async function readPdf(file){
+        const base=getBaseUrl();let text;
+        // Prefer the host's own loader, which initializes its matching PDF worker.
+        let nativeRead;
+        try{nativeRead=(await import(new URL('scripts/utils.js',base).href)).extractTextFromPDF;}catch(_){}
+        if(typeof nativeRead==='function')text=await nativeRead(file);
+        else {
+            let pdfjs,lastError;
+            for(const filename of ['pdf.min.mjs','pdf.mjs']){
+                try{
+                    const mod=await import(new URL('lib/'+filename,base).href);
+                    pdfjs=mod.getDocument?mod:hostWindow.pdfjsLib;
+                    if(!pdfjs?.getDocument)throw Error('PDF 解析器没有可用接口');
+                    if(pdfjs.GlobalWorkerOptions)pdfjs.GlobalWorkerOptions.workerSrc=new URL('lib/'+filename.replace('pdf.','pdf.worker.'),base).href;
+                    break;
+                }catch(error){pdfjs=null;lastError=error;}
             }
-        } finally {
-            pdf.cleanup?.();
-            loadingTask.destroy?.();
+            if(!pdfjs)throw Error('无法加载酒馆 PDF 解析器：'+(lastError?.message||''));
+            const task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())});
+            try{
+                const pdf=await task.promise,pages=[];
+                for(let i=1;i<=pdf.numPages;i++){
+                    const page=await pdf.getPage(i),content=await page.getTextContent();
+                    pages.push(content.items.map(item=>(item.str||'')+(item.hasEOL?'\n':' ')).join(''));page.cleanup?.();
+                }
+                text=pages.join('\n\n');
+            }finally{await task.destroy?.();}
         }
-
-        return pages.join('\n\n');
+        if(!String(text||'').trim())throw Error('PDF 未提取到文字，可能是扫描件或图片型 PDF，需要文字识别');
+        return text;
     }
 
     async function readDocument(file) {
@@ -3049,7 +2926,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '10.3', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '10.4', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4712,7 +4589,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V10.3 loaded');
+        console.log('[鲜虾鱼板面] V10.4 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
