@@ -2704,14 +2704,44 @@
         if(!result.value.trim())throw Error('DOCX 未提取到文字，请确认文档正文不是图片');
         return result.value;
     }
+    function awmPdfPageText(items){
+        const lines=[];let line=null;
+        for(const item of items){
+            if(typeof item.str!=='string'||!item.transform)continue;
+            const x=item.transform[4],y=item.transform[5],height=Math.max(1,Math.abs(item.height)||Math.hypot(item.transform[2],item.transform[3])||12);
+            if(!line||Math.abs(line.y-y)>Math.max(2,height*.3)){
+                line={y,height,x,parts:[]};lines.push(line);
+            }
+            line.parts.push({...item,x,height});line.height=Math.max(line.height,height);
+            if(item.hasEOL)line=null;
+        }
+        if(!lines.length)return '';
+        const margin=Math.min(...lines.filter(l=>l.parts.some(p=>p.str.trim())).map(l=>l.x));
+        const output=[];let previous=null;
+        for(const row of lines){
+            let text='',end=null,last='';
+            for(const part of row.parts){
+                if(/^\s+$/.test(part.str)&&part.width<part.height*.12)continue;
+                const value=part.str.replace(/[\u2f00-\u2fdf]/g,c=>c.normalize('NFKC')).replace(/[⻛⻓⻆]/g,c=>({'⻛':'风','⻓':'长','⻆':'角'})[c]);
+                const gap=end===null?0:part.x-end;
+                // Preserve actual spaces; infer a missing word gap only from geometry.
+                if(text&&value&&!/\s$/.test(text)&&!/^\s/.test(value)){
+                    const cjk=/[\u2e80-\u9fff\uf900-\ufaff]/;
+                    const threshold=cjk.test(last.slice(-1))&&cjk.test(value[0])?part.height*.65:part.height*.18;
+                    if(gap>threshold)text+=' '.repeat(Math.min(8,Math.max(1,Math.round(gap/(part.height*.28)))));
+                }
+                text+=value;last=value||last;end=part.x+(part.width||0);
+            }
+            if(!text.trim())continue;
+            if(previous&&previous.y-row.y>Math.max(previous.height,row.height)*1.65)output.push('');
+            const indent=Math.min(32,Math.max(0,Math.round((row.x-margin)/(row.height*.5))));
+            output.push(' '.repeat(indent)+text.replace(/\s+$/,''));previous=row;
+        }
+        return output.join('\n');
+    }
     async function readPdf(file){
-        const base=getBaseUrl();let text;
-        // Prefer the host's own loader, which initializes its matching PDF worker.
-        let nativeRead;
-        try{nativeRead=(await import(new URL('scripts/utils.js',base).href)).extractTextFromPDF;}catch(_){}
-        if(typeof nativeRead==='function')text=await nativeRead(file);
-        else {
-            let pdfjs,lastError;
+        const base=getBaseUrl();let pdfjs=hostWindow.pdfjsLib,lastError;
+        if(!pdfjs?.getDocument){
             for(const filename of ['pdf.min.mjs','pdf.mjs']){
                 try{
                     const mod=await import(new URL('lib/'+filename,base).href);
@@ -2721,17 +2751,17 @@
                     break;
                 }catch(error){pdfjs=null;lastError=error;}
             }
-            if(!pdfjs)throw Error('无法加载酒馆 PDF 解析器：'+(lastError?.message||''));
-            const task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())});
-            try{
-                const pdf=await task.promise,pages=[];
-                for(let i=1;i<=pdf.numPages;i++){
-                    const page=await pdf.getPage(i),content=await page.getTextContent();
-                    pages.push(content.items.map(item=>(item.str||'')+(item.hasEOL?'\n':' ')).join(''));page.cleanup?.();
-                }
-                text=pages.join('\n\n');
-            }finally{await task.destroy?.();}
         }
+        if(!pdfjs?.getDocument)throw Error('无法加载酒馆 PDF 解析器：'+(lastError?.message||''));
+        const task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())});let text;
+        try{
+            const pdf=await task.promise,pages=[];
+            for(let i=1;i<=pdf.numPages;i++){
+                const page=await pdf.getPage(i),content=await page.getTextContent();
+                pages.push(awmPdfPageText(content.items));page.cleanup?.();
+            }
+            text=pages.join('\n\n');
+        }finally{await task.destroy?.();}
         if(!String(text||'').trim())throw Error('PDF 未提取到文字，可能是扫描件或图片型 PDF，需要文字识别');
         return text;
     }
@@ -2926,7 +2956,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '10.4', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '10.5', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4589,7 +4619,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V10.4 loaded');
+        console.log('[鲜虾鱼板面] V10.5 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
