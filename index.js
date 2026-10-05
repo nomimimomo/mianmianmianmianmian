@@ -2199,7 +2199,6 @@
                     const row=el('article','awm-preset-result'),head=el('div','awm-preset-result-head');
                     const name=el('button','awm-preset-entry-name');name.type='button';mmPresetHighlight(name,prompt.name||'未命名条目',text);
                     name.onclick=()=>showEntry(prompt.identifier);head.append(name);if(text)head.append(el('span','awm-preset-hit-count',hits.length+' 处'));row.append(head);
-                    if(!text){const preview=el('button','awm-preset-hit',String(prompt.content||'').slice(0,160)||'（无正文）');preview.type='button';preview.onclick=()=>showEntry(prompt.identifier);row.append(preview);}
                     mmPresetHitGroups(prompt,hits).forEach(({hit,index})=>{
                         const link=el('button','awm-preset-hit');link.type='button';link.setAttribute('aria-label',(hit.source==='name'?'名称':'正文')+'第 '+(index+1)+' 处命中，查看完整正文');
                         if(hit.source==='name')link.append(el('span','awm-preset-name-label','名称 · '));
@@ -2739,6 +2738,25 @@
         }
         return output.join('\n');
     }
+    function awmPdfReflow(pages){
+        const blocks=[];let blank=false,fenced=false;
+        const kind=t=>/^```|^~~~/.test(t)?'fence':/^#{1,6}\s/.test(t)?'heading':/^<\/?[^<>]+>$/.test(t)?'tag':/^(?:[-*+•]\s|\d+[.)、]\s*)/.test(t)?'list':/^[;；⬇]/.test(t)?'label':/^\|.*\|$/.test(t)?'table':'text';
+        const join=(a,b)=>a+(/[\u2e80-\u9fff\uf900-\ufaff，。！？；：、）】》]$/.test(a)||/^[\u2e80-\u9fff\uf900-\ufaff，。！？；：、）】》]/.test(b)||/[-/\u00ad]$/.test(a)?'':' ')+b;
+        for(const page of pages){
+            blank=false;
+            for(const raw of page.trim().split('\n')){
+                const text=raw.trim();if(!text){blank=true;continue;}
+                const type=kind(text),last=blocks.at(-1);
+                if(type==='fence'){blocks.push({text:raw,type,blank});fenced=!fenced;blank=false;continue;}
+                if(fenced||type==='table'){blocks.push({text:raw,type:'literal',blank});blank=false;continue;}
+                if(!last||type!=='text'||!['text','list'].includes(last.type)||blank){
+                    blocks.push({text:raw.trimEnd(),type,blank:blank||(type==='heading'&&/^##/.test(text))});
+                }else last.text=join(last.text,text);
+                blank=false;
+            }
+        }
+        return blocks.map((b,i)=>(i&&b.blank?'\n':'')+b.text).join('\n');
+    }
     async function readPdf(file){
         const base=getBaseUrl();let pdfjs=hostWindow.pdfjsLib,lastError;
         if(!pdfjs?.getDocument){
@@ -2760,7 +2778,7 @@
                 const page=await pdf.getPage(i),content=await page.getTextContent();
                 pages.push(awmPdfPageText(content.items));page.cleanup?.();
             }
-            text=pages.join('\n\n');
+            text=awmPdfReflow(pages);
         }finally{await task.destroy?.();}
         if(!String(text||'').trim())throw Error('PDF 未提取到文字，可能是扫描件或图片型 PDF，需要文字识别');
         return text;
@@ -2956,7 +2974,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '10.5', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '10.6', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4619,7 +4637,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V10.5 loaded');
+        console.log('[鲜虾鱼板面] V10.6 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});

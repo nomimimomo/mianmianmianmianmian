@@ -176,7 +176,7 @@
 /* V9.8: settings owns its vertical scroll area. */
 #awm-panel-v03 #awmMain.awm-panel-settings{overflow-y:auto;overflow-x:hidden;min-height:0;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 
-/* V10.5 */
+/* V10.6 */
 #awm-extension-settings .awm-feature-position-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
 #awm-extension-settings .awm-feature-position-row>select{width:110px;flex:0 0 110px}
 #awmPresetSearchDialog .awm-preset-edit-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0}
@@ -184,7 +184,7 @@
 #awmPresetSearchDialog [hidden]{display:none!important}
 #awmPresetSearchDialog [data-save-status]{font-size:.85em;overflow-wrap:anywhere}
 
-/* V10.5: shared save and per-entry draft editing */
+/* V10.6: shared save and per-entry draft editing */
 #awmPresetSearchDialog .awm-preset-summary-row{display:flex;align-items:center;gap:8px;padding:0 var(--awm-tool-pad) 8px;flex:none}
 #awmPresetSearchDialog .awm-preset-summary-row .awm-preset-summary{flex:1;padding:0;min-width:0}
 #awmPresetSearchDialog .awm-preset-summary-row button{flex:none}
