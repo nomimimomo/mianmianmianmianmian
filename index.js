@@ -2152,7 +2152,7 @@
                 const fieldPreset=currentName();
                 const input=el(key==='name'?'input':'textarea','awm-preset-inline-editor');
                 input.value=prompt[key]||'';input.setAttribute('aria-label',key==='name'?'条目名称':'条目正文');
-                if(key==='content'){input.rows=Math.max(8,input.value.split('\n').length);}
+                if(key==='content'){input.rows=2;q('full').classList.add('awm-preset-editing-content');q('full').scrollTop=0;}
                 input.oninput=()=>{
                     if(!drafts.size)draftName=fieldPreset;
                     drafts.set(prompt.identifier,{...drafts.get(prompt.identifier),[key]:input.value});
@@ -2179,7 +2179,7 @@
             try{
                 const prompt=entries().find(x=>x.identifier===identifier);
                 if(!prompt){viewId=null;q('view').hidden=true;q('results').hidden=false;search();return;}
-                viewId=identifier;marks=[];position=0;q('full').replaceChildren();
+                viewId=identifier;marks=[];position=0;q('full').replaceChildren();q('full').classList.remove('awm-preset-editing-content');
                 const title=el('h4','awm-preset-full-title');if(prompt.name)mmPresetHighlight(title,prompt.name,keyword(),marks);else title.textContent='未命名条目';
                 const body=el('div','awm-preset-body');mmPresetHighlight(body,prompt.content,keyword(),marks);
                 q('full').append(title,body);editField(title,prompt,'name');editField(body,prompt,'content');if(!q('results').hidden)resultScroll=q('results').scrollTop;q('results').hidden=true;q('view').hidden=false;
@@ -2974,7 +2974,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '10.6', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '10.7', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4637,7 +4637,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V10.6 loaded');
+        console.log('[鲜虾鱼板面] V10.7 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
