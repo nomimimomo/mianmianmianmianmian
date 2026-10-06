@@ -1544,23 +1544,41 @@
         return {...MM_BACKUP_DEFAULT,...value};
     }
     async function mmBackupReadPreferences(){
-        if(mmBackupPrefs)return mmBackupPrefs;
-        if(mmBackupReadError)throw mmBackupReadError;
-        if(!mmBackupPrefsReading)mmBackupPrefsReading=(async()=>{
-            const ctx=hostWindow.SillyTavern?.getContext?.();
-            const get=mmHelperFn('getVariables');
-            const local=get?.({type:'global'})?.[MM_BACKUP_PREF_KEY]
-                || mmBackupDecodePrefs({extension_settings:ctx?.extensionSettings,accountStorage:{[MM_BACKUP_PREF_KEY]:ctx?.accountStorage?.getItem?.(MM_BACKUP_PREF_KEY)}});
-            if(local){mmBackupPrefs=mmBackupCheckPrefs(local);return mmBackupPrefs;}
-            const sequence=mmBackupPrefsSequence;
-            const settings=await mmBackupServerSettings();let value=mmBackupDecodePrefs(settings);
-            // Only dedicated cleaner preferences are eligible for migration.
+        if(mmBackupPrefs){mmBackupReadError=null;return mmBackupPrefs;}
+        if(mmBackupPrefsReading)return mmBackupPrefsReading;
+        const sequence=mmBackupPrefsSequence;
+        mmBackupReadError=null;
+        mmBackupPrefsReading=(async()=>{
+            // A slow helper must not prevent reading the server copy.
+            const localRead=()=>{
+                const ctx=hostWindow.SillyTavern?.getContext?.();let local=null;
+                try{local=mmHelperFn('getVariables')?.({type:'global'})?.[MM_BACKUP_PREF_KEY];}catch(_){}
+                if(!local)try{local=mmBackupDecodePrefs({extension_settings:ctx?.extensionSettings,accountStorage:{[MM_BACKUP_PREF_KEY]:ctx?.accountStorage?.getItem?.(MM_BACKUP_PREF_KEY)}});}catch(_){}
+                if(local)try{return mmBackupCheckPrefs(local);}catch(_){}
+                return null;
+            };
+            let settings,local;
+            for(let attempt=0;attempt<2;attempt++){
+                if(sequence!==mmBackupPrefsSequence&&mmBackupPrefs)return mmBackupPrefs;
+                local=localRead();if(local){mmBackupPrefs=local;return local;}
+                try{settings=await mmBackupServerSettings();break;}
+                catch(error){
+                    if(sequence!==mmBackupPrefsSequence&&mmBackupPrefs)return mmBackupPrefs;
+                    local=localRead();if(local){mmBackupPrefs=local;return local;}
+                    if(attempt===1)throw error;
+                    await new Promise(resolve=>hostWindow.setTimeout(resolve,1500));
+                }
+            }
+            if(sequence!==mmBackupPrefsSequence)return mmBackupPrefs;
+            let value=mmBackupDecodePrefs(settings);
             if(!value){const raw=settings.accountStorage?.['鲜虾鱼板面.v2.preferences'];if(raw)value=JSON.parse(raw).value;}
             if(!value){const raw=settings.accountStorage?.['ame-style-management-v05_backup_preferences_v1'];if(raw)value=JSON.parse(raw);}
             if(!value){try{value=JSON.parse(hostWindow.localStorage.getItem(AWM_LAYOUT_KEY)||'{}').backupCleaner;}catch{}}
-            if(sequence!==mmBackupPrefsSequence)return mmBackupPrefs;
             mmBackupPrefs=value?mmBackupCheckPrefs(value):{...MM_BACKUP_DEFAULT};return mmBackupPrefs;
-        })().catch(error=>{mmBackupReadError=error;mmBackupPrefsReading=null;throw error;});
+        })().then(value=>{mmBackupReadError=null;return value;}).catch(error=>{
+            if(sequence!==mmBackupPrefsSequence&&mmBackupPrefs){mmBackupReadError=null;return mmBackupPrefs;}
+            mmBackupReadError=error;throw error;
+        }).finally(()=>{mmBackupPrefsReading=null;});
         return mmBackupPrefsReading;
     }
     function mmBackupSettings(){return {...MM_BACKUP_DEFAULT,...(mmBackupPrefs||{})};}
@@ -1886,7 +1904,7 @@
     }
     function mmBackupAutoEnabled(){const prefs=mmBackupSettings();return prefs.enabled!==false&&prefs.retention!=='off';}
     async function mmBackupSchedule(startup = false) {
-        try {await mmBackupReadPreferences();}catch(error){mmBackupStatus('自动清理失败');mmLog('backupPreferences','settings','unavailable',error.message);return;}
+        try {await mmBackupReadPreferences();}catch(error){mmBackupStatus('清理设置暂未读到，清理未启动；重新打开设置可重试');mmLog('backupPreferences','settings','unavailable',error.message);return;}
         hostWindow.clearTimeout(mmBackupTimer);
         if (mmBackupStopped) return;
         const settings = mmBackupSettings();
@@ -2502,7 +2520,7 @@
         q('awmBackupScan').onclick = ()=>mmBackupRun('scan');
         q('awmBackupClean').onclick = ()=>mmBackupRun('clean');
         sync(); mmBackupSyncToggle();mmBackupSetBusy(mmBackupBusy);
-        if(!mmBackupBusy)mmBackupStatus(mmBackupReadError?'自动清理失败':mmBackupIdleStatus());
+        if(!mmBackupBusy)mmBackupStatus(mmBackupReadError?'清理设置暂未读到，重新打开设置可重试':mmBackupIdleStatus());
         try{
             await mmBackupReadPreferences();
             if(!section.isConnected||saveSequence)return;
@@ -2512,8 +2530,8 @@
             q('awmBackupDailyTime').value=loaded.dailyTime;
             q('awmBackupWeeklyDay').value=loaded.weeklyDay;
             q('awmBackupWeeklyTime').value=loaded.weeklyTime;
-            sync();mmBackupSyncToggle();
-        }catch(error){if(!saveSequence){mmBackupStatus('自动清理失败');mmLog('backupPreferences','settings','failed',error.message);}}
+            sync();mmBackupSyncToggle();if(!mmBackupBusy)mmBackupStatus(mmBackupIdleStatus());
+        }catch(error){if(!saveSequence){mmBackupStatus('清理设置暂未读到，清理未启动；重新打开设置可重试');mmLog('backupPreferences','settings','failed',error.message);}}
     }
     hostWindow.addEventListener('pagehide', () => { mmBackupStopped = true; hostWindow.clearTimeout(mmBackupTimer); mmBackupConfirmResolve?.(false); });
     // END V9.7 isolated backup cleaner.
@@ -2564,7 +2582,7 @@
             mmSetLauncherVisible(true);launcherToggle.checked=true;
         };
         const toggle=main.querySelector('#awmBackupEnabled');toggle.disabled=false;
-        mmBackupReadPreferences().then(()=>{toggle.disabled=false;mmBackupSyncToggle();if(!mmBackupBusy)mmBackupStatus(mmBackupIdleStatus());}).catch(error=>{mmBackupStatus('自动清理失败');mmLog('backupPreferences','settings','failed',error.message);});
+        mmBackupReadPreferences().then(()=>{toggle.disabled=false;mmBackupSyncToggle();if(!mmBackupBusy)mmBackupStatus(mmBackupIdleStatus());}).catch(error=>{mmBackupStatus('清理设置暂未读到，清理未启动；重新打开设置可重试');mmLog('backupPreferences','settings','failed',error.message);});
         toggle.onchange=async()=>{
             const previous=mmBackupSettings();toggle.disabled=true;
             const enabled=toggle.checked;
@@ -2980,7 +2998,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '10.9', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '10.11', events: mmDiagnostics }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4637,7 +4655,7 @@
             bindExtensionSettings(wrapper);
         }catch(error){console.warn('[鲜虾鱼板面] 扩展设置未加载',error);}
     }
-    // V10.9 portable persona cards. Original raw world-info is retained in the extension envelope.
+    // V10.11 portable persona cards. Original raw world-info is retained in the extension envelope.
     const MM_USER_CARD_KEY = 'mianmian_user_card';
     function mmUniqueName(base, names) {
         let name=base, i=2; const used=new Set(names.map(n=>String(n).toLowerCase()));
@@ -4885,7 +4903,7 @@
         edit.addEventListener('pointerdown',e=>e.preventDefault());
         edit.onclick=()=>{if(!mmFeatures().inlineEdit||!selection||active||writing)return;const s=selection;try{check(s);s.loc=mmLocateSelection(s.source,s.text,s.before,s.after);if(!s.loc)throw Error('选文无法唯一对应原文，请多选几个字，或用原来的小铅笔');
             if(!s.range.startContainer.isConnected)throw Error('正文已刷新，请重新选择');
-            s.span=root.createElement('span');s.span.className='awm-inline-text';s.span.contentEditable='true';s.span.setAttribute('role','textbox');s.span.setAttribute('aria-label','编辑选中文字');s.span.style.cssText='display:inline-block;box-sizing:border-box;max-width:100%;min-height:52px;min-width:4ch;padding:10px 12px;line-height:1.75;vertical-align:middle;white-space:pre-wrap;overflow-wrap:anywhere;outline:1px solid var(--SmartThemeQuoteColor,#9a9);background:var(--SmartThemeBlurTintColor,#eee);border-radius:6px';
+            s.span=root.createElement('span');s.span.className='awm-inline-text';s.span.contentEditable='true';s.span.setAttribute('role','textbox');s.span.setAttribute('aria-label','编辑选中文字');s.span.style.cssText='display:block;box-sizing:border-box;width:auto;max-width:100%;min-width:0;min-height:52px;margin:6px 3px;padding:10px 12px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;border:1px solid var(--SmartThemeQuoteColor,#9a9);outline:none;background:var(--SmartThemeBlurTintColor,#eee);border-radius:6px';
             s.original=s.range.extractContents();s.span.textContent=s.text;s.range.insertNode(s.span);
             s.tools=root.createElement('span');s.tools.contentEditable='false';s.tools.style.cssText='display:inline-flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:12px;vertical-align:middle;padding:6px 8px;max-width:100%;user-select:none';
             s.history=[s.text];s.historyIndex=0;
@@ -4922,7 +4940,7 @@
         mmPresetSearchWatch();
         mmInjectExtensionSettings();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V10.9 loaded');
+        console.log('[鲜虾鱼板面] V10.11 loaded');
     }
 
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
