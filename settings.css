@@ -200,3 +200,9 @@
 #awmPresetSearchDialog .awm-preset-editing-content > .awm-preset-full-title,
 #awmPresetSearchDialog .awm-preset-editing-content > input.awm-preset-inline-editor{flex:none}
 #awmPresetSearchDialog .awm-preset-editing-content > textarea.awm-preset-inline-editor{flex:1 1 0;min-height:0;height:0;max-height:none;margin-bottom:0;resize:none;overflow:auto}
+
+/* V10.14: new action buttons keep words horizontal and wrap as a whole. */
+#awmChatBackupDialog .awm-chat-backup-tools{display:flex;flex-wrap:wrap}
+#awmChatBackupDialog .awm-chat-backup-tools input[type=search]{flex:1 1 180px;width:auto}
+:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-actions{display:flex;flex-wrap:wrap;gap:10px}
+:is(#awmChatBackupDialog,#awmPresetSearchDialog) button.menu_button,:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-actions button.menu_button{flex:0 0 auto;width:auto!important;min-width:max-content;white-space:nowrap;writing-mode:horizontal-tb;word-break:normal;min-height:40px;padding:8px 12px}
