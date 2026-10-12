@@ -1,7 +1,7 @@
-import { clone, uid } from './core.js?v=11.1';
-import { features, publisherKey, followPublisher, sanitizePublisher, activePublishers } from './features.js?v=11.1';
-import { ctx, storyKey, storyName, storyContext, promptRows } from './bridge.js?v=11.1';
-import { convertText } from './text-script.js?v=11.1';
+import { clone, uid } from './core.js?v=11.2';
+import { features, publisherKey, followPublisher, sanitizePublisher, activePublishers } from './features.js?v=11.2';
+import { ctx, storyKey, storyName, storyContext, promptRows } from './bridge.js?v=11.2';
+import { convertText } from './text-script.js?v=11.2';
 
 export function featureMethods({ esc, btn, field, check }) {
     return {

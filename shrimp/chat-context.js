@@ -1,5 +1,5 @@
-import {characterItems,sourceMessages} from './bridge.js?v=11.1';
-import {compileLocalMacros} from './features.js?v=11.1';
+import {characterItems,sourceMessages} from './bridge.js?v=11.2';
+import {compileLocalMacros} from './features.js?v=11.2';
 export function resolveMembers(members,cards=characterItems()){
  return members.map(m=>{
   if(m.kind!=='character')return m;
@@ -25,4 +25,12 @@ export function buildChatSetup(state,members,fallback,user,storyCharacter){
  const compiled=compileLocalMacros(messages);
  compiled.messages.push({role:'system',content:'以下是本轮实际参与聊天的成员资料。角色卡中的性格、说话方式、示例对话和关系约束用于对应角色；故事背景人物不会自动成为发言者。聊天展示格式不改变人格。\n'+JSON.stringify(members.map(characterPayload))});
  return {...compiled,promptCount,sourceCount:sources.size,cardCount:members.filter(m=>m.kind==='character').length};
+}
+
+// Reference: SillyPhone gates occasional contacts before generation, not with probability prose.
+export function selectReplyMembers(members,conversation,batch,random=Math.random){
+ if(conversation.kind!=='group'||!members.some(m=>m.kind!=='character'))return members;
+ const addressed=new Set(batch.flatMap(m=>m.mentions||[]));
+ for(const m of batch){const quoted=conversation.messages.find(q=>q.id===m.replyTo);if(quoted?.contactId)addressed.add(quoted.contactId);}
+ return members.filter(m=>m.kind!=='character'||addressed.has(m.id)||batch.some(b=>m.name&&b.text?.includes(m.name))||random()<0.05);
 }

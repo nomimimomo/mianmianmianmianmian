@@ -1,4 +1,4 @@
-export const VERSION = '11.1';
+export const VERSION = '11.2';
 export const clone = x => JSON.parse(JSON.stringify(x));
 export function uid() {
     if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
@@ -71,10 +71,17 @@ export function parseFeed(text, max) {
     });
 }
 export function applyTurn(conv, reply, batchIds, replacement = null) {
-    if (replacement) conv.messages = conv.messages.filter(m => m.turnId !== replacement.id || m.side !== 'ai');
     const turn = replacement || { id: uid(), batchIds: [...batchIds] };
+    let insertAt=conv.messages.length;
+    if(replacement){
+        const old=conv.messages.filter(m=>m.turnId===turn.id&&m.side==='ai');
+        turn.revisions||=[];turn.revisions.push({savedAt:Date.now(),messages:clone(old)});
+        const first=conv.messages.findIndex(m=>m.turnId===turn.id&&m.side==='ai');
+        insertAt=first<0?Math.max(-1,...batchIds.map(id=>conv.messages.findIndex(m=>m.id===id)))+1:first;
+        conv.messages=conv.messages.filter(m=>m.turnId!==turn.id||m.side!=='ai');
+    }
     for (const m of conv.messages) if (batchIds.includes(m.id)) { m.status = 'sent'; m.turnId = turn.id; }
-    conv.messages.push(...reply.map(m => ({ ...m, turnId: turn.id })));
+    conv.messages.splice(insertAt,0,...reply.map(m=>({...m,turnId:turn.id})));
     if (!replacement) conv.turns.push(turn);
     conv.updatedAt = Date.now();
 }

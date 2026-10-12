@@ -2,7 +2,7 @@
 
 (function () {
     const AWM_SCRIPT_URL = document.currentScript?.src || import.meta.url;
-    const integrationURL = new URL('./integration.js?v=11.1', import.meta.url);
+    const integrationURL = new URL('./integration.js?v=11.2', import.meta.url);
     let integration;
     const ID = 'ame-style-management-v05';
     const PANEL_ID = 'awm-panel-v03';
@@ -38,6 +38,7 @@
     let runtimeData = null;
 
     const clone = x => JSON.parse(JSON.stringify(x));
+    const structuredClone=typeof hostWindow.structuredClone==='function'?hostWindow.structuredClone.bind(hostWindow):clone;
 
     function unique(arr) {
         return [...new Set((arr || []).map(x => String(x || '').trim()).filter(Boolean))];
@@ -2662,11 +2663,11 @@
     function mmFeatures() {
         try {
             const account=hostWindow.SillyTavern?.getContext?.()?.accountStorage;
-            return {editor:true,styles:true,search:true,inlineEdit:true,...JSON.parse(account?.getItem?.(MM_FEATURE_KEY)||hostWindow.localStorage.getItem(MM_FEATURE_KEY)||'{}')};
-        } catch (_) { return {editor:true,styles:true,search:true,inlineEdit:true}; }
+            return {editor:true,styles:true,search:true,inlineEdit:true,shrimp:true,...JSON.parse(account?.getItem?.(MM_FEATURE_KEY)||hostWindow.localStorage.getItem(MM_FEATURE_KEY)||'{}')};
+        } catch (_) { return {editor:true,styles:true,search:true,inlineEdit:true,shrimp:true}; }
     }
     function mmPageEnabled(page) {
-        const flags=mmFeatures();return page==='mianmian'?flags.editor:page==='styles'?flags.styles:true;
+        const flags=mmFeatures();return page==='shrimp'?flags.shrimp:page==='mianmian'?flags.editor:page==='styles'?flags.styles:true;
     }
     function mmFeatureApply() {
         awmSyncNav();
@@ -2674,7 +2675,7 @@
         if(panel&&panel.style.display!=='none'&&!mmPageEnabled(awmCurrentPage))render('settings');
         if(!mmFeatures().search)root.getElementById('awmPresetSearchDialog')?.close();
         mmPresetSearchAttach();
-        hostWindow.__awmInlineFeatureSync?.();
+        hostWindow.__awmInlineFeatureSync?.();hostWindow.dispatchEvent(new CustomEvent('fishboard-features-changed'));
     }
     function mmFeatureSet(key,enabled) {
         if(mmWriteLocked()||mmRuntime.loadWaiters.char||mmRuntime.loadWaiters.user)throw Error('请等待当前操作完成');
@@ -2687,7 +2688,7 @@
     }
     function bindExtensionSettings(main) {
         mmFeatureLayoutBind(main);
-        for(const [id,key] of [['awmEditorEnabled','editor'],['awmStylesEnabled','styles'],['awmSearchEnabled','search'],['awmInlineEditEnabled','inlineEdit']]) {
+        for(const [id,key] of [['awmShrimpEnabled','shrimp'],['awmEditorEnabled','editor'],['awmStylesEnabled','styles'],['awmSearchEnabled','search'],['awmInlineEditEnabled','inlineEdit']]) {
             const input=main.querySelector('#'+id);if(!input)continue;input.checked=mmFeatures()[key];
             input.onchange=()=>{try{mmFeatureSet(key,input.checked);}catch(error){input.checked=mmFeatures()[key];toast(error.message,'warning');}};
         }
@@ -3134,7 +3135,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '11.1', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '11.2', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -4812,7 +4813,7 @@
         let drag = null;
         button.addEventListener('pointerdown', e => { drag = { id:e.pointerId,x:e.clientX,y:e.clientY,left:button.getBoundingClientRect().left,top:button.getBoundingClientRect().top,moved:false }; button.setPointerCapture(e.pointerId); });
         button.addEventListener('pointermove', e => { if (!drag || drag.id !== e.pointerId) return; const dx=e.clientX-drag.x,dy=e.clientY-drag.y; if (Math.abs(dx)+Math.abs(dy)>6) drag.moved=true; if (!drag.moved) return; button.style.left=drag.left+dx+'px';button.style.top=drag.top+dy+'px';button.style.right=button.style.bottom='auto';mmLauncherClamp(button); });
-        button.addEventListener('pointerup', e => { if (!drag || drag.id!==e.pointerId) return; if (drag.moved) { try { hostWindow.localStorage.setItem(MM_LAUNCHER_KEY+'.position', JSON.stringify({x:button.offsetLeft,y:button.offsetTop})); } catch (_) {} } else integration.openChat(); drag=null; });
+        button.addEventListener('pointerup', e => { if (!drag || drag.id!==e.pointerId) return; if (drag.moved) { try { hostWindow.localStorage.setItem(MM_LAUNCHER_KEY+'.position', JSON.stringify({x:button.offsetLeft,y:button.offsetTop})); } catch (_) {} } else mmOpenEntry(); drag=null; });
         button.addEventListener('pointercancel', () => { drag=null; });
     }
     function createMenuButton() {
@@ -4828,7 +4829,7 @@
         b.id = 'awm-menu-button-v04';
         b.className = 'list-group-item flex-container flexGap5 interactable';
         b.innerHTML = '<span>🍥 鲜虾鱼板面</span>';
-        b.onclick = open;
+        b.onclick = mmOpenEntry;
         menu.prepend(b);
     }
 
@@ -5351,9 +5352,10 @@
 
     hostWindow.AmeFishboard = {
         open(page='mianmian') { awmCurrentPage=page; open(); }, close,
-        getData:()=>clone(load()), searchPresets:mmPresetSearchOpen,
+        openChat:mmOpenEntry,
+        getData:()=>clone(load()), features:mmFeatures, searchPresets:mmPresetSearchOpen,
         log:(stage,status,details)=>mmLog(stage,'integration',status,'',undefined,details),
-        report:()=>({version:'11.1',plugin:'鲜虾鱼板面',events:clone(mmDiagnostics)}),
+        report:()=>({version:'11.2',plugin:'鲜虾鱼板面',events:clone(mmDiagnostics)}),
         exportDiagnostics:mmExportDiagnostics,
         flush:()=>integration.storage.flush(),
     };
@@ -5371,15 +5373,44 @@
         mmInjectExtensionSettings();
         mmBackupIdleInit();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V11.1 loaded');
+        console.log('[鲜虾鱼板面] V11.2 loaded');
         integration.attach(hostWindow.AmeFishboard);
     }
 
+    // Opening a read-only panel must not wait on the backup cleaner's APP_READY gate.
+    async function mmWaitForContext(){
+        const started=Date.now();
+        while(Date.now()-started<20000){
+            let context;try{context=hostWindow.SillyTavern?.getContext?.();}catch(_){}
+            if(context&&typeof context.getRequestHeaders==='function'&&(context.accountStorage?.getItem||mmHelperFn('getVariables')||mmStorageMode()==='browser'))return context;
+            await new Promise(resolve=>hostWindow.setTimeout(resolve,100));
+        }
+        throw Error('酒馆接口尚未就绪，请等待酒馆载入后点重新读取');
+    }
+    function mmStartupNotice(message,failed=false){
+        let box=root.getElementById('fishboard-startup');
+        if(!box){box=root.createElement('section');box.id='fishboard-startup';box.setAttribute('role','status');box.style.cssText='position:fixed;z-index:2147483001;left:5vw;top:15vh;width:min(480px,90vw);box-sizing:border-box;padding:18px;border:1px solid var(--SmartThemeBorderColor,#666);border-radius:8px;background:var(--SmartThemeBlurTintColor,#292929);color:var(--SmartThemeBodyColor,#ddd);font:inherit;';box.innerHTML='<b>鲜虾鱼板面 V11.2</b><p data-message></p><button data-retry type="button">重新读取</button> <button data-report type="button">导出诊断日志</button> <button data-close type="button">关闭</button>';(root.body||root.documentElement).append(box);box.querySelector('[data-retry]').onclick=mmOpenEntry;box.querySelector('[data-report]').onclick=mmExportDiagnostics;box.querySelector('[data-close]').onclick=()=>box.remove();}
+        box.querySelector('[data-message]').textContent=message;box.querySelector('[data-retry]').disabled=!failed;
+    }
+    let entryOpening;
+    function mmOpenEntry(){
+        if(entryOpening)return entryOpening;
+        entryOpening=(async()=>{
+            try{
+                if(!mmInitialized){mmStartupNotice('正在读取…');await bootstrap();}
+                root.getElementById('fishboard-startup')?.remove();
+                await integration.toggleChat();
+            }catch(error){mmLog('startup','integration','failed',error.message);mmStartupNotice(error.message,true);}
+        })().finally(()=>entryOpening=null);
+        return entryOpening;
+    }
     let bootstrapPending;
     async function bootstrapRun() {
         // Wait for Tavern startup without blocking its event dispatcher.
-        await mmBackupWaitReady();
-        integration=await import(integrationURL.href);
+        await mmWaitForContext();
+        let importTimer;
+        try{integration=await Promise.race([import(integrationURL.href),new Promise((_,reject)=>{importTimer=hostWindow.setTimeout(()=>reject(Error('聊天模块加载超时，请检查扩展文件是否上传完整后重试')),20000);})]);}
+        finally{hostWindow.clearTimeout(importTimer);}
         await integration.storage.prepare(mmStorageMode(),()=>hostWindow.SillyTavern?.getContext?.(),mmHelperFn);
         if (integration.storage.initial) {runtimeData=mmNormalize(integration.storage.initial);tavernDataReady=true;}
         if (integration.storage.error) {
@@ -5394,7 +5425,7 @@
         return bootstrapPending;
     }
     hostWindow.AmeFishboard.retryStartup=async()=>{if(mmInitialized&&integration.storage.error)throw Error('保存已暂停，请先导出本页资料，避免丢失未保存的编辑');await bootstrap();if(integration.storage.error)throw integration.storage.error;root.getElementById('fishboard-recovery')?.remove();};
-    const boot=()=>bootstrap().catch(error=>{console.error('[鲜虾鱼板面] 启动失败',error);hostWindow.toastr?.error('鱼板面启动失败：'+error.message);});
+    const boot=()=>{createMenuButton();mmCreateLauncher();bootstrap().catch(error=>{console.error('[鲜虾鱼板面] 启动失败',error);mmLog('startup','integration','failed',error.message);mmStartupNotice(error.message,true);});};
     if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',boot,{once:true});
     else hostWindow.setTimeout(boot,0);
 })();

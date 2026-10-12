@@ -1,6 +1,6 @@
-import {appendSystem} from './social.js?v=11.1';
-import {uid} from './core.js?v=11.1';
-import {diagnostics} from './diagnostics.js?v=11.1';
+import {appendSystem} from './social.js?v=11.2';
+import {uid} from './core.js?v=11.2';
+import {diagnostics} from './diagnostics.js?v=11.2';
 export const defaultGroupName=(self,members)=>[self,...members].join('、')+`（${members.length+1}）`;
 export function interactionMethods({esc,btn,avatar}) { return {
  updateBusyButtons(){

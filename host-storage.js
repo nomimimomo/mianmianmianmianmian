@@ -1,3 +1,4 @@
+import {timeoutSignal} from './compat.js?v=11.2';
 const KEY='鲜虾鱼板面.data.v1';
 const copy=x=>x==null?x:JSON.parse(JSON.stringify(x));
 const canonical=x=>JSON.stringify(x,(_k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
@@ -28,12 +29,12 @@ export class HostStorage {
  async backupOriginal(){
   if(this.backupChecked||!this.confirmed)return;
   const name='ame-fishboard-before11-v1.json',url='/user/files/'+name;
-  const old=await fetch(url+'?t='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(20000)});
+  const old=await fetch(url+'?t='+Date.now(),{cache:'no-store',signal:timeoutSignal(20000)});
   if(old.ok){const saved=await old.json();decode(saved.data);this.backupChecked=true;return;}
   if(old.status!==404)throw Error('升级前备份暂不可读，尚未覆盖原资料');
-  const pack={plugin:'鲜虾鱼板面',version:'11.1',data:this.confirmed},bytes=new TextEncoder().encode(JSON.stringify(pack));let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
-  const r=await fetch('/api/files/upload',{method:'POST',headers:this.context().getRequestHeaders(),signal:AbortSignal.timeout(30000),body:JSON.stringify({name,data:btoa(binary)})});if(!r.ok)throw Error('升级前备份未保存，尚未覆盖原资料');
-  const check=await fetch(url+'?t='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(20000)});if(!check.ok||canonical((await check.json()).data)!==canonical(this.confirmed))throw Error('升级前备份核对失败，尚未覆盖原资料');this.backupChecked=true;
+  const pack={plugin:'鲜虾鱼板面',version:'11.2',data:this.confirmed},bytes=new TextEncoder().encode(JSON.stringify(pack));let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+  const r=await fetch('/api/files/upload',{method:'POST',headers:this.context().getRequestHeaders(),signal:timeoutSignal(30000),body:JSON.stringify({name,data:btoa(binary)})});if(!r.ok)throw Error('升级前备份未保存，尚未覆盖原资料');
+  const check=await fetch(url+'?t='+Date.now(),{cache:'no-store',signal:timeoutSignal(20000)});if(!check.ok||canonical((await check.json()).data)!==canonical(this.confirmed))throw Error('升级前备份核对失败，尚未覆盖原资料');this.backupChecked=true;
  }
  flush(){return this.chain;}
 }

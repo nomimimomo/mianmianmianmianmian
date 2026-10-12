@@ -1,6 +1,6 @@
-import {ctx,storyKey} from './bridge.js?v=11.1';
-import {uid} from './core.js?v=11.1';
-import {diagnostics} from './diagnostics.js?v=11.1';
+import {ctx,storyKey} from './bridge.js?v=11.2';
+import {uid} from './core.js?v=11.2';
+import {diagnostics} from './diagnostics.js?v=11.2';
 export function proseCount(chat,tag=''){
  let total=0;const floors=[];
  for(const [index,m] of (chat||[]).entries()){
@@ -64,9 +64,12 @@ export function walletMethods({esc,btn,field}){return {
   catch(error){this.store.blocked=true;throw error;}
  },
  walletSnapshot(){const key=storyKey();if(!key)throw Error('请先打开一个酒馆聊天');return {key,...balanceFor(this.state,key,ctx().chat)};},
+ renderWallet(){const w=this.walletView;return `<main class="shr-wide shr-wallet-page">${this.header('零钱',btn('wallet:bills','账单'))}<div class="shr-scroll"><div class="shr-wallet-balance"><div class="shr-wallet-icon">¥</div><p>我的零钱</p><h1>¥ ${w.available.toLocaleString()}</h1></div><div class="shr-wallet-links">${btn('wallet:audit','收入明细')}${btn('wallet:settings','零钱设置')}</div></div></main>`;},
  async walletAction(a,id){
   if(storyKey())await this.walletMigrate();
-  if(a==='open'){const w=this.walletSnapshot();diagnostics.log('wallet.count',{count:w.total,spent:w.spent});this.modal('钱包',`<div class="shr-wallet-balance"><small>零钱 · 正文余额</small><h1>¥ ${w.available}</h1><p>累计收入 ${w.total} · 已转出 ${w.spent}</p></div><p class="shr-note">开始生成下一层时，上一层 AI 正文每字收入 1 元。每层结算一次，删除或修改已结算楼层不扣回收入，刷新不重复到账。标点、空白、思考及已识别的状态栏不计入。转账为故事内互动。</p>${w.deficit?`<p>历史账单超出已记录收入 ${w.deficit} 元，后续收入补足后恢复可用余额。</p>`:''}${field('bodyTag','正文标签（可留空自动识别）',w.book.tag||'')}<p class="shr-note">若预设有自定义状态栏，可填写正文外层标签名，让计数只取正文。规则变更仅影响后续入账。</p>${btn('wallet:rule','保存计数规则')}${btn('wallet:audit','查看收入明细')}<h3>账单</h3>${w.book.entries.slice().reverse().map(t=>btn('wallet:detail',`${esc(t.name)}　−${t.amount}　${new Date(t.createdAt).toLocaleString()}`,t.id)).join('')||'<p>暂无转账</p>'}`);return;}
+  if(a==='open'){this.walletView=this.walletSnapshot();this.closeModal();this.tab='wallet';this.detail=false;this.groupPanel=false;this.render();return;}
+  if(a==='bills'){const w=this.walletSnapshot();this.modal('账单',`<div class="shr-settings-links">${w.book.entries.slice().reverse().map(t=>btn('wallet:detail',`${esc(t.name)}　−${t.amount}　${new Date(t.createdAt).toLocaleString()}`,t.id)).join('')||'<p>暂无转账</p>'}</div>`);return;}
+  if(a==='settings'){const w=this.walletSnapshot();this.modal('零钱设置',`<p class="shr-note">开始生成下一层时，上一层 AI 正文每字收入 1 元。每层只结算一次；删除或修改已结算楼层不扣回收入。标点、空白、思考及已识别的状态栏不计入。转账为故事内互动。</p>${field('bodyTag','正文标签（留空自动识别）',w.book.tag||'')}<p class="shr-note">标签规则仅影响后续入账。</p>`,btn('wallet:rule','保存'));return;}
   if(a==='rule'){const w=this.walletSnapshot(),tag=this.values().bodyTag.trim();if(tag&&!/^[\p{L}\p{N}_:-]+$/u.test(tag))throw Error('请只填写标签名称');this.state.wallets||={};const book=this.state.wallets[w.key]||={entries:[],tag:''};book.tag=tag;await this.save();diagnostics.log('wallet.rule',{count:tag.length});return this.walletAction('open');}
   if(a==='audit'){const w=this.walletSnapshot();this.modal('收入明细',w.floors.map(f=>`<p>入账时第 ${f.index+1} 楼：+${f.amount} 元</p>`).join('')||'<p>暂无正文</p>');return;}
   if(a==='transfer'){const c=this.conversation(),w=this.walletSnapshot();if(!c||c.left)throw Error('请先进入一个可用聊天');this.modal('转账',`<label class="shr-field">转给<select name="recipient">${c.members.map(id=>`<option value="${esc(id)}">${esc(c.nicknames?.[id]||this.contact(id)?.name||'成员')}</option>`).join('')}</select></label>${field('amount','转账金额','','number','min="1" step="1" inputmode="numeric"')}${field('note','添加转账说明','')}<p class="shr-note">可用余额 ¥ ${w.available} · 已入账收入</p>`,btn('wallet:commit','转账','','shr-primary'),{key:w.key,conversationId:c.id,transferId:uid()});return;}

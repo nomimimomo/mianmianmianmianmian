@@ -1,5 +1,5 @@
-import {uid} from './core.js?v=11.1';
-import {diagnostics} from './diagnostics.js?v=11.1';
+import {uid} from './core.js?v=11.2';
+import {diagnostics} from './diagnostics.js?v=11.2';
 export function decodeBook(content){const bytes=Uint8Array.from(atob(content),c=>c.charCodeAt(0));try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{return new TextDecoder('gb18030').decode(bytes);}}
 export function txtMethods({esc,btn}){return {
  async txtOpen(key){const r=this.readingRow(key);this.txtText=decodeBook(r.content);this.txtKey=key;this.txtPage=Math.max(0,Math.min(Math.round((r.progress||0)*Math.max(0,Math.ceil(this.txtText.length/4000)-1)),Math.max(0,Math.ceil(this.txtText.length/4000)-1)));this.render();diagnostics.log('reading.txt.open',{characters:this.txtText.length});},
