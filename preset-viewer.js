@@ -1,5 +1,5 @@
-import {ctx,presets,snapshot} from './shrimp/bridge.js?v=11.3';
-import {orderedPrompts} from './shrimp/core.js?v=11.3';
+import {ctx,presets,snapshot} from './shrimp/bridge.js?v=11.4';
+import {orderedPrompts} from './shrimp/core.js?v=11.4';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const normalizeName=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/(?:版本|version|ver|v)\s*\d+(?:\.\d+)*/gi,'').replace(/\d+(?:\.\d+)+/g,'').replace(/[\s_\-·（）()【】\[\]]/g,'');
 export function familyHint(a,b){const sameName=normalizeName(a.name)===normalizeName(b.name)&&!!normalizeName(a.name),first=x=>x.preset.prompts.filter(p=>p.content?.trim()).slice(0,2).map(p=>p.content.replace(/\s/g,'').slice(0,160));const l=first(a),r=first(b),sameStart=l.length===2&&r.length===2&&l.every((s,i)=>s.length>30&&s===r[i]);return sameName||sameStart?'名称或开头两条相似，可能是同款预设的不同版本；请核对。':'未找到明确的同款线索，仍可手动对照。';}

@@ -1,7 +1,7 @@
-import {ctx,storyKey,storyContext} from './bridge.js?v=11.3';
-import {currentCharacter} from './chat-integration.js?v=11.3';
-import {uid,digest,parseJSON} from './core.js?v=11.3';
-import {diagnostics} from './diagnostics.js?v=11.3';
+import {ctx,storyKey,storyContext} from './bridge.js?v=11.4';
+import {currentCharacter} from './chat-integration.js?v=11.4';
+import {uid,digest,parseJSON} from './core.js?v=11.4';
+import {diagnostics} from './diagnostics.js?v=11.4';
 const normalized=s=>String(s||'').normalize('NFKC').trim().toLocaleLowerCase().replace(/\s+/g,'');
 export function verifiedNpcs(raw,sources,excluded=[]){
  const data=parseJSON(raw);if(!Array.isArray(data.people))throw Error('NPC 候选格式不正确');const seen=new Set(excluded.map(normalized)),out=[];

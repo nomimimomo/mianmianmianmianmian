@@ -1,4 +1,4 @@
-import {VERSION} from './core.js?v=11.3';
+import {VERSION} from './core.js?v=11.4';
 export function errorReason(e) {
  const message=String(e?.message||'');
  for(const [pattern,code] of [[/酒馆正在生成/,'tavern_busy'],[/鲜虾正在生成/,'shrimp_busy'],[/冲突|其他页面|其他设备/,'storage_conflict'],[/超时|abort/i,'timeout'],[/fetch|network/i,'network'],[/JSON|格式|没有返回文本/,'response_format'],[/预设|Prompt/,'preset'],[/切换|已变化|已改变/,'context_changed'],[/保存|读取/,'storage'],[/API|模型|地址/,'api_configuration']]) if(pattern.test(message))return code;

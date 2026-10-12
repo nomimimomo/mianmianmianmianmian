@@ -1,8 +1,8 @@
-import {timeoutSignal} from '../compat.js?v=11.3';
-import {uid} from './core.js?v=11.3';
-import {BrowserLibrary,TavernLibrary,ReadingRepository,bookFromFile,excerptLines,exportExcerpts} from './reading-store.js?v=11.3';
-import {diagnostics} from './diagnostics.js?v=11.3';
-import {ctx} from './bridge.js?v=11.3';
+import {timeoutSignal} from '../compat.js?v=11.4';
+import {uid} from './core.js?v=11.4';
+import {BrowserLibrary,TavernLibrary,ReadingRepository,bookFromFile,excerptLines,exportExcerpts} from './reading-store.js?v=11.4';
+import {diagnostics} from './diagnostics.js?v=11.4';
+import {ctx} from './bridge.js?v=11.4';
 const label=p=>p==='tavern'?'酒馆':'当前浏览器';
 const key=r=>r.place+':'+r.id;
 export function readingMethods({esc,btn,field,check}){return {

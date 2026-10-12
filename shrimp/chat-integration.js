@@ -1,4 +1,4 @@
-import {ctx,characterItems} from './bridge.js?v=11.3';
+import {ctx,characterItems} from './bridge.js?v=11.4';
 export function currentCharacter(){
  const c=ctx(),ch=c?.characters?.[c.characterId];if(!ch)return null;
  return characterItems().find(x=>x.id===(ch.avatar||String(c.characterId)))||null;

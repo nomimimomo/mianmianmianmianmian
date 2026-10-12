@@ -1,6 +1,6 @@
-import {uid,clone} from './core.js?v=11.3';
-import {ctx,storyKey} from './bridge.js?v=11.3';
-import {diagnostics} from './diagnostics.js?v=11.3';
+import {uid,clone} from './core.js?v=11.4';
+import {ctx,storyKey} from './bridge.js?v=11.4';
+import {diagnostics} from './diagnostics.js?v=11.4';
 export const defaultSocialRules=`群成员按各自的生活、关系和当下话题自然聊天。每轮可以没人发言，也可以同一人连续发多条。允许互相交流、插话、跑题、接梗、争论和潜水。不按名单轮流回复，不要求回应User，不默认由Char主持。不强行限制每句话字数。引用、@和群事件作为具体互动理解。延续已有话题，但不为热闹制造无关消息。`;
 
 export function appendSystem(c,text,event={}){const m={id:uid(),side:'system',kind:'system',text,event,createdAt:Date.now(),status:'pending'};c.messages.push(m);c.updatedAt=m.createdAt;return m;}

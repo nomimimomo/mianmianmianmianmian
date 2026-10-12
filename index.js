@@ -2,7 +2,7 @@
 
 (function () {
     const AWM_SCRIPT_URL = document.currentScript?.src || import.meta.url;
-    const integrationURL = new URL('./integration.js?v=11.3', import.meta.url);
+    const integrationURL = new URL('./integration.js?v=11.4', import.meta.url);
     let integration;
     const ID = 'ame-style-management-v05';
     const PANEL_ID = 'awm-panel-v03';
@@ -3135,7 +3135,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '11.3', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '11.4', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3301,7 +3301,8 @@
         const original = mmStorageMode(), value = mmNormalize(load());
         if (mode === 'tavern') {
             if (!canUseTavernStorage()) throw new Error('酒馆变量接口不可用');
-            await integration.storage.prepare('tavern',()=>hostWindow.SillyTavern?.getContext?.(),mmHelperFn);
+            mmSetStartupStage('正在读取原资料，最多等待 12 秒…');
+        await integration.storage.prepare('tavern',()=>hostWindow.SillyTavern?.getContext?.(),mmHelperFn);
             integration.storage.assertWritable();
             writeTavernData(value);
             await integration.storage.flush();
@@ -5355,7 +5356,7 @@
         openChat:mmOpenEntry,
         getData:()=>clone(load()), features:mmFeatures, searchPresets:mmPresetSearchOpen,
         log:(stage,status,details)=>mmLog(stage,'integration',status,'',undefined,details),
-        report:()=>({version:'11.3',plugin:'鲜虾鱼板面',events:clone(mmDiagnostics)}),
+        report:()=>({version:'11.4',plugin:'鲜虾鱼板面',events:clone(mmDiagnostics)}),
         exportDiagnostics:mmExportDiagnostics,
         flush:()=>integration.storage.flush(),
     };
@@ -5373,7 +5374,7 @@
         mmInjectExtensionSettings();
         mmBackupIdleInit();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V11.3 loaded');
+        console.log('[鲜虾鱼板面] V11.4 loaded');
         integration.attach(hostWindow.AmeFishboard);
     }
 
@@ -5389,7 +5390,7 @@
     }
     function mmStartupNotice(message,failed=false){
         let box=root.getElementById('fishboard-startup');
-        if(!box){box=root.createElement('section');box.id='fishboard-startup';box.setAttribute('role','status');box.style.cssText='position:fixed;z-index:2147483001;left:5vw;top:15vh;width:min(480px,90vw);box-sizing:border-box;padding:18px;border:1px solid var(--SmartThemeBorderColor,#666);border-radius:8px;background:var(--SmartThemeBlurTintColor,#292929);color:var(--SmartThemeBodyColor,#ddd);font:inherit;';box.innerHTML='<b>鲜虾鱼板面 V11.3</b><p data-message></p><button data-retry type="button">重新读取</button> <button data-report type="button">导出诊断日志</button> <button data-close type="button">关闭</button>';(root.body||root.documentElement).append(box);box.querySelector('[data-retry]').onclick=mmOpenEntry;box.querySelector('[data-report]').onclick=mmExportDiagnostics;box.querySelector('[data-close]').onclick=()=>box.remove();}
+        if(!box){box=root.createElement('section');box.id='fishboard-startup';box.setAttribute('role','status');box.style.cssText='position:fixed;z-index:2147483001;left:5vw;top:15vh;width:min(480px,90vw);box-sizing:border-box;padding:18px;border:1px solid var(--SmartThemeBorderColor,#666);border-radius:8px;background:var(--SmartThemeBlurTintColor,#292929);color:var(--SmartThemeBodyColor,#ddd);font:inherit;';box.innerHTML='<b>鲜虾鱼板面 V11.4</b><p data-message></p><button data-retry type="button">重新读取</button> <button data-report type="button">导出诊断日志</button> <button data-close type="button">关闭</button>';(root.body||root.documentElement).append(box);box.querySelector('[data-retry]').onclick=mmOpenEntry;box.querySelector('[data-report]').onclick=mmExportDiagnostics;box.querySelector('[data-close]').onclick=()=>box.remove();}
         box.querySelector('[data-message]').textContent=message;box.querySelector('[data-retry]').disabled=!failed;
     }
     let entryOpening;
@@ -5397,30 +5398,35 @@
         if(entryOpening)return entryOpening;
         entryOpening=(async()=>{
             try{
-                if(!mmInitialized){mmStartupNotice('正在读取…');await bootstrap();}
-                root.getElementById('fishboard-startup')?.remove();
+                if(!mmInitialized){mmStartupNotice(startupStage);await bootstrap();}
+                if(!integration.isChatReady()&&mmFeatures().shrimp!==false)mmStartupNotice('正在读取聊天资料…');
+                mmSetStartupStage('正在读取聊天资料…');
                 await integration.toggleChat();
+                root.getElementById('fishboard-startup')?.remove();
             }catch(error){mmLog('startup','integration','failed',error.message);mmStartupNotice(error.message,true);}
         })().finally(()=>entryOpening=null);
         return entryOpening;
     }
+    let startupStage='正在等待酒馆接口…';
+    function mmSetStartupStage(message){startupStage=message;const box=root.getElementById('fishboard-startup');if(box)mmStartupNotice(message);}
     let bootstrapPending;
     async function bootstrapRun() {
         // Wait for Tavern startup without blocking its event dispatcher.
+        mmSetStartupStage('正在等待酒馆接口…');
         await mmWaitForContext();
+        mmSetStartupStage('正在加载聊天模块…');
         let importTimer;
         try{integration=await Promise.race([import(integrationURL.href),new Promise((_,reject)=>{importTimer=hostWindow.setTimeout(()=>reject(Error('聊天模块加载超时，请检查扩展文件是否上传完整后重试')),20000);})]);}
         finally{hostWindow.clearTimeout(importTimer);}
+        mmSetStartupStage('正在读取原资料，最多等待 12 秒…');
         await integration.storage.prepare(mmStorageMode(),()=>hostWindow.SillyTavern?.getContext?.(),mmHelperFn);
+        if(integration.storage.error)throw integration.storage.error;
         if (integration.storage.initial) {runtimeData=mmNormalize(integration.storage.initial);tavernDataReady=true;}
-        if (integration.storage.error) {
-            addStyle(); mmAddStyle(); createMenuButton(); mmCreateLauncher();
-            integration.attach(hostWindow.AmeFishboard);return;
-        }
         init();
     }
     function bootstrap(){
         if(bootstrapPending)return bootstrapPending;
+        if(mmInitialized)return Promise.resolve();
         bootstrapPending=bootstrapRun().finally(()=>bootstrapPending=null);
         return bootstrapPending;
     }

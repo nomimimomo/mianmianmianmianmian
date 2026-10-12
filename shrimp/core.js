@@ -1,4 +1,4 @@
-export const VERSION = '11.3';
+export const VERSION = '11.4';
 export const clone = x => JSON.parse(JSON.stringify(x));
 export function uid() {
     if (globalThis.crypto?.randomUUID) return crypto.randomUUID();

@@ -1,6 +1,6 @@
-import {ctx,storyKey} from './bridge.js?v=11.3';
-import {uid} from './core.js?v=11.3';
-import {diagnostics} from './diagnostics.js?v=11.3';
+import {ctx,storyKey} from './bridge.js?v=11.4';
+import {uid} from './core.js?v=11.4';
+import {diagnostics} from './diagnostics.js?v=11.4';
 export function proseCount(chat,tag=''){
  let total=0;const floors=[];
  for(const [index,m] of (chat||[]).entries()){

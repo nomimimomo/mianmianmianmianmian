@@ -1,7 +1,7 @@
-import {recentProse} from '../context-isolation.js?v=11.3';
-import {compactMessages,safeApiError,extractAnswer,responseShape} from './api-utils.js?v=11.3';
-import { diagnostics, instrument } from './diagnostics.js?v=11.3';
-import { clone, digest, orderedPrompts, parseJSON } from './core.js?v=11.3';
+import {recentProse} from '../context-isolation.js?v=11.4';
+import {compactMessages,safeApiError,extractAnswer,responseShape} from './api-utils.js?v=11.4';
+import { diagnostics, instrument } from './diagnostics.js?v=11.4';
+import { clone, digest, orderedPrompts, parseJSON } from './core.js?v=11.4';
 export const ctx = () => window.SillyTavern?.getContext?.();
 export function presets() {
     const m = ctx()?.getPresetManager?.('openai');

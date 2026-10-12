@@ -1,5 +1,5 @@
-import {ctx,storyKey} from './bridge.js?v=11.3';
-import {clone} from './core.js?v=11.3';
+import {ctx,storyKey} from './bridge.js?v=11.4';
+import {clone} from './core.js?v=11.4';
 const fields=['contacts','conversations','activeConversation','ignored','npcCandidates','npcScan','publishers'];
 const defaults=()=>({contacts:[],conversations:[],activeConversation:'',ignored:{},npcCandidates:[],npcScan:{},publishers:[],storySocial:{enabled:false,targets:[],rules:''},proactive:{}});
 export function captureScope(state){if(!state?.socialScopeKey)return;const bucket=state.socialScopes[state.socialScopeKey]||=defaults();for(const f of fields)bucket[f]=state[f];bucket.storySocial=state.settings.storySocial||{};bucket.proactive=state.settings.proactive||{};}

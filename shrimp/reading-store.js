@@ -1,5 +1,5 @@
-import {timeoutSignal} from '../compat.js?v=11.3';
-import {uid, clone, digest} from './core.js?v=11.3';
+import {timeoutSignal} from '../compat.js?v=11.4';
+import {uid, clone, digest} from './core.js?v=11.4';
 export const emptyLibrary=()=>({schema:1,revision:null,items:[]});
 const valid=x=>{if(!x||x.schema!==1||!Array.isArray(x.items)||x.items.some(r=>!r.id||!['book','excerpt'].includes(r.kind)))throw Error('书架数据格式不正确，未覆盖');return x;};
 export const excerptLines=text=>String(text).replace(/^\uFEFF/,'').split(/\r\n|\n|\r/).map(s=>s.trim()).filter(Boolean);

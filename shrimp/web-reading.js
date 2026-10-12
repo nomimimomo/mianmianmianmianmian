@@ -1,6 +1,6 @@
-import {readerLocation,validateReaderMessage} from './reader-link.js?v=11.3';
-import {uid} from './core.js?v=11.3';
-import {diagnostics} from './diagnostics.js?v=11.3';
+import {readerLocation,validateReaderMessage} from './reader-link.js?v=11.4';
+import {uid} from './core.js?v=11.4';
+import {diagnostics} from './diagnostics.js?v=11.4';
 export function webURL(value){const u=new URL(value.trim());if(!['https:','http:'].includes(u.protocol)||u.username||u.password)throw Error('请填写完整的 http / https 网页地址');return u.href;}
 export function webBook(v,old={}){return {...old,id:old.id||uid(),kind:'book',sourceType:'web',title:v.title.trim()||new URL(webURL(v.url)).hostname,url:webURL(v.url),coverUrl:v.coverUrl?.trim()?webURL(v.coverUrl):'',group:v.group?.trim()||'',createdAt:old.createdAt||Date.now()};}
 export function webReadingMethods({esc,btn,field}){return {

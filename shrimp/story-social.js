@@ -1,11 +1,11 @@
-import {identityContext} from './ecosystem.js?v=11.3';
-import {characterPayload} from './chat-context.js?v=11.3';
-import {sanitizeOutgoingHistory} from '../context-isolation.js?v=11.3';
-import {ctx,storyKey,sourceMessages} from './bridge.js?v=11.3';
-import {uid,digest,clone,parseJSON} from './core.js?v=11.3';
-import {splitChatText,compileLocalMacros} from './features.js?v=11.3';
-import {defaultSocialRules} from './social.js?v=11.3';
-import {diagnostics} from './diagnostics.js?v=11.3';
+import {identityContext} from './ecosystem.js?v=11.4';
+import {characterPayload} from './chat-context.js?v=11.4';
+import {sanitizeOutgoingHistory} from '../context-isolation.js?v=11.4';
+import {ctx,storyKey,sourceMessages} from './bridge.js?v=11.4';
+import {uid,digest,clone,parseJSON} from './core.js?v=11.4';
+import {splitChatText,compileLocalMacros} from './features.js?v=11.4';
+import {defaultSocialRules} from './social.js?v=11.4';
+import {diagnostics} from './diagnostics.js?v=11.4';
 export function extractSocial(text){const matches=[...String(text).matchAll(/<shrimp_social>([\s\S]*?)<\/shrimp_social>/g)];if(!matches.length)return null;if(matches.length!==1)throw Error('本轮社交数据块重复，未清理正文');return {block:matches[0][0],data:parseJSON(matches[0][1])};}
 export function validateSocial(data,conversations){
  if(!data||!Array.isArray(data.groups)||data.groups.length>30)throw Error('社交数据缺少groups');const out=[];

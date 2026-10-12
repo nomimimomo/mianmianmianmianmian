@@ -1,4 +1,4 @@
-import { clone, uid, parseJSON, digest } from './core.js?v=11.3';
+import { clone, uid, parseJSON, digest } from './core.js?v=11.4';
 export const defaultPublisher = () => ({ id: 'builtin-hk', name: '街巷来信', intro: '用港媒笔触看故事里的世情与人物。', topics: '当地社会、民生、娱乐、人物传闻、街头见闻', style: '香港本地报刊口吻；标题简洁醒目，记者报道笔触，娱乐话题可有圈内消息、传闻及人物反应。措辞贴合故事所处年代。只借鉴口吻，不把其他世界强行设在香港。', script: 'simplified', followed: true, scope: '*', createdAt: Date.now() });
 export const defaultFeatures = () => ({ readStory:true });
 export function upgradeFeatures(state) {

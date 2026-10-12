@@ -1,4 +1,4 @@
-import {diagnostics} from './diagnostics.js?v=11.3';
+import {diagnostics} from './diagnostics.js?v=11.4';
 export function integrationMethods({esc,btn,avatar}){return {
  async fishboardAction(a){
   if(['mianmian','styles','settings'].includes(a)){this.hostReturn=true;window.AmeFishboard.open(a);if(document.getElementById('awm-panel-v03')?.style.display!=='none')this.close();return;}
