@@ -94,16 +94,16 @@
 :is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-actions button.menu_button{flex:0 0 auto;margin:0}
 
 /* V9.1: one frame for preset search and backup browsing, matching the main panel. */
-:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)).awm-tool-dialog{box-sizing:border-box;--awm-tool-pad:10px;position:fixed;inset:auto;margin:0;padding:0;max-width:none;max-height:none;min-width:0;min-height:0;transform:none;border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,10px);background:var(--SmartThemeBlurTintColor);color:var(--SmartThemeBodyColor);font-family:var(--mainFontFamily,inherit);font-size:var(--mainFontSize,1rem);box-shadow:0 10px 35px rgba(0,0,0,.35);overflow:hidden}
+:is(#awmChatBackupDialog,#awmPresetSearchDialog).awm-tool-dialog{box-sizing:border-box;--awm-tool-pad:10px;position:fixed;inset:auto;margin:0;padding:0;max-width:none;max-height:none;min-width:0;min-height:0;transform:none;border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,10px);background:var(--SmartThemeBlurTintColor);color:var(--SmartThemeBodyColor);font-family:var(--mainFontFamily,inherit);font-size:var(--mainFontSize,1rem);box-shadow:0 10px 35px rgba(0,0,0,.35);overflow:hidden}
 .awm-tool-dialog::backdrop{background:var(--black70a,rgba(0,0,0,.35))}
 .awm-tool-dialog *{box-sizing:border-box;min-width:0}
 .awm-tool-dialog [hidden]{display:none!important}
-:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)) :is(.awm-chat-backup-shell,.awm-tool-shell){display:flex;flex-direction:column;height:100%;max-height:none;min-height:0;overflow:hidden}
-:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)) header{height:44px;min-height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 14px;border-bottom:1px solid var(--SmartThemeBorderColor)}
-:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)) h3{margin:0;font:inherit;font-weight:700;font-size:1.05em;overflow-wrap:anywhere}
-:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)) button{margin:0;min-height:34px;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:6px 10px;font:inherit;line-height:1.2;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px);cursor:pointer}
-:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)) button:hover{background:var(--SmartThemeQuoteColor)}
-:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)) button:disabled{opacity:.5;cursor:default}
+:is(#awmChatBackupDialog,#awmPresetSearchDialog) :is(.awm-chat-backup-shell,.awm-tool-shell){display:flex;flex-direction:column;height:100%;max-height:none;min-height:0;overflow:hidden}
+:is(#awmChatBackupDialog,#awmPresetSearchDialog) header{height:44px;min-height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 14px;border-bottom:1px solid var(--SmartThemeBorderColor)}
+:is(#awmChatBackupDialog,#awmPresetSearchDialog) h3{margin:0;font:inherit;font-weight:700;font-size:1.05em;overflow-wrap:anywhere}
+:is(#awmChatBackupDialog,#awmPresetSearchDialog) button{margin:0;min-height:34px;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:6px 10px;font:inherit;line-height:1.2;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px);cursor:pointer}
+:is(#awmChatBackupDialog,#awmPresetSearchDialog) button:hover{background:var(--SmartThemeQuoteColor)}
+:is(#awmChatBackupDialog,#awmPresetSearchDialog) button:disabled{opacity:.5;cursor:default}
 #awmChatBackupDialog :is(.awm-chat-backup-tools,.awm-chat-backup-list,.awm-chat-backup-detail,.awm-chat-backup-confirm,footer,.awm-chat-backup-status){padding-left:var(--awm-tool-pad);padding-right:var(--awm-tool-pad)}
 #awmChatBackupDialog .awm-chat-backup-list{flex:1;min-height:0;overflow:auto;overflow-x:hidden}
 #awmChatBackupDialog .awm-chat-backup-tools{flex:none;gap:8px}
@@ -113,32 +113,32 @@
 #awmChatBackupDialog .awm-chat-backup-row{border-color:var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px)}
 #awmPresetSearchButton{flex:0 0 auto;min-height:28px;min-width:28px;margin:0 6px 0 auto;padding:2px 4px;border:0;border-radius:var(--mainBorderRadius,7px);background:transparent;color:var(--SmartThemeBodyColor);font:inherit;line-height:1;cursor:pointer;touch-action:manipulation}
 #awmPresetSearchButton:hover{background:var(--SmartThemeQuoteColor)}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-search-bar{display:grid;grid-template-columns:minmax(0,1fr) 80px;gap:5px;align-items:center;flex:none;padding:var(--awm-tool-pad) var(--awm-tool-pad) 6px}
-:is(#awmPresetSearchDialog,#awmPresetViewer) :is(input,select){width:100%;min-width:0;height:34px;margin:0;padding:5px 7px;border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px);background:var(--SmartThemeBlurTintColor);color:var(--SmartThemeBodyColor);font:inherit;line-height:1.2}
-:is(#awmPresetSearchDialog,#awmPresetViewer) select{font-size:.85em;padding-left:5px;padding-right:0}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-summary{flex:none;margin:0;padding:0 var(--awm-tool-pad) 8px;font-size:.85em;line-height:1.4;opacity:.8;overflow-wrap:anywhere}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-results{flex:1;min-height:0;overflow:auto;overflow-x:hidden;padding:0 var(--awm-tool-pad) var(--awm-tool-pad);overscroll-behavior:contain}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-result{border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px);margin:0 0 7px;overflow:hidden}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-result-head{display:flex;align-items:center;gap:8px;padding:7px 9px;background:var(--black30a)}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-entry-name{flex:1;justify-content:flex-start;display:block;min-height:0;border:0;padding:0;background:transparent;text-align:left;font-weight:600;overflow-wrap:anywhere}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-hit-count{flex:none;font-size:.8em;white-space:nowrap;opacity:.75}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-hit{display:block;width:100%;min-height:0;padding:8px 9px;border:0;border-top:1px solid var(--SmartThemeBorderColor);border-radius:0;background:transparent;text-align:left;font-size:.9em;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-name-label{opacity:.65;font-size:.85em}
-:is(#awmPresetSearchDialog,#awmPresetViewer) mark{padding:0;border-radius:2px;background:var(--SmartThemeQuoteColor);color:var(--SmartThemeBodyColor);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-current-hit{outline:2px solid var(--SmartThemeBodyColor);outline-offset:1px}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-empty{margin:0;padding:8px 0;font-size:.9em}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-view{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;padding:0 var(--awm-tool-pad) var(--awm-tool-pad)}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-view nav{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;flex:none;padding:0 0 8px}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-view nav button{font-size:.85em;padding:5px 7px}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-navigation{display:flex;align-items:center;gap:5px;margin-left:auto}
-:is(#awmPresetSearchDialog,#awmPresetViewer) [data-position]{font-size:.85em;min-width:42px;text-align:center;white-space:nowrap}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-full{flex:1;min-height:0;overflow:auto;overflow-x:hidden;padding:10px;border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px);overscroll-behavior:contain;overflow-wrap:anywhere}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-full-title{font:inherit;font-weight:600;margin:0 0 12px;white-space:pre-wrap}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-body{white-space:pre-wrap;line-height:1.65;tab-size:4}
-@media(max-width:600px){:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)).awm-tool-dialog{--awm-tool-pad:6px}:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)) header{padding-left:6px;padding-right:6px}#awmChatBackupDialog .awm-chat-backup-tools{gap:5px}:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-view nav{gap:4px}}
+#awmPresetSearchDialog .awm-preset-search-bar{display:grid;grid-template-columns:minmax(0,1fr) 80px;gap:5px;align-items:center;flex:none;padding:var(--awm-tool-pad) var(--awm-tool-pad) 6px}
+#awmPresetSearchDialog :is(input,select){width:100%;min-width:0;height:34px;margin:0;padding:5px 7px;border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px);background:var(--SmartThemeBlurTintColor);color:var(--SmartThemeBodyColor);font:inherit;line-height:1.2}
+#awmPresetSearchDialog select{font-size:.85em;padding-left:5px;padding-right:0}
+#awmPresetSearchDialog .awm-preset-summary{flex:none;margin:0;padding:0 var(--awm-tool-pad) 8px;font-size:.85em;line-height:1.4;opacity:.8;overflow-wrap:anywhere}
+#awmPresetSearchDialog .awm-preset-results{flex:1;min-height:0;overflow:auto;overflow-x:hidden;padding:0 var(--awm-tool-pad) var(--awm-tool-pad);overscroll-behavior:contain}
+#awmPresetSearchDialog .awm-preset-result{border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px);margin:0 0 7px;overflow:hidden}
+#awmPresetSearchDialog .awm-preset-result-head{display:flex;align-items:center;gap:8px;padding:7px 9px;background:var(--black30a)}
+#awmPresetSearchDialog .awm-preset-entry-name{flex:1;justify-content:flex-start;display:block;min-height:0;border:0;padding:0;background:transparent;text-align:left;font-weight:600;overflow-wrap:anywhere}
+#awmPresetSearchDialog .awm-preset-hit-count{flex:none;font-size:.8em;white-space:nowrap;opacity:.75}
+#awmPresetSearchDialog .awm-preset-hit{display:block;width:100%;min-height:0;padding:8px 9px;border:0;border-top:1px solid var(--SmartThemeBorderColor);border-radius:0;background:transparent;text-align:left;font-size:.9em;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+#awmPresetSearchDialog .awm-preset-name-label{opacity:.65;font-size:.85em}
+#awmPresetSearchDialog mark{padding:0;border-radius:2px;background:var(--SmartThemeQuoteColor);color:var(--SmartThemeBodyColor);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
+#awmPresetSearchDialog .awm-current-hit{outline:2px solid var(--SmartThemeBodyColor);outline-offset:1px}
+#awmPresetSearchDialog .awm-preset-empty{margin:0;padding:8px 0;font-size:.9em}
+#awmPresetSearchDialog .awm-preset-view{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;padding:0 var(--awm-tool-pad) var(--awm-tool-pad)}
+#awmPresetSearchDialog .awm-preset-view nav{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;flex:none;padding:0 0 8px}
+#awmPresetSearchDialog .awm-preset-view nav button{font-size:.85em;padding:5px 7px}
+#awmPresetSearchDialog .awm-preset-navigation{display:flex;align-items:center;gap:5px;margin-left:auto}
+#awmPresetSearchDialog [data-position]{font-size:.85em;min-width:42px;text-align:center;white-space:nowrap}
+#awmPresetSearchDialog .awm-preset-full{flex:1;min-height:0;overflow:auto;overflow-x:hidden;padding:10px;border:1px solid var(--SmartThemeBorderColor);border-radius:var(--mainBorderRadius,7px);overscroll-behavior:contain;overflow-wrap:anywhere}
+#awmPresetSearchDialog .awm-preset-full-title{font:inherit;font-weight:600;margin:0 0 12px;white-space:pre-wrap}
+#awmPresetSearchDialog .awm-preset-body{white-space:pre-wrap;line-height:1.65;tab-size:4}
+@media(max-width:600px){:is(#awmChatBackupDialog,#awmPresetSearchDialog).awm-tool-dialog{--awm-tool-pad:6px}:is(#awmChatBackupDialog,#awmPresetSearchDialog) header{padding-left:6px;padding-right:6px}#awmChatBackupDialog .awm-chat-backup-tools{gap:5px}#awmPresetSearchDialog .awm-preset-view nav{gap:4px}}
 
 /* Preset search is a non-modal tool: the native editor remains interactive. */
-:is(#awmPresetSearchDialog,#awmPresetViewer).awm-tool-dialog{z-index:100001}
+#awmPresetSearchDialog.awm-tool-dialog{z-index:100001}
 
 /* Settings: consistent peer titles and shared compact controls. */
 #awm-extension-settings .awm-extension-settings-content{padding:4px 14px 12px}
@@ -179,33 +179,33 @@
 /* V10.6 */
 #awm-extension-settings .awm-feature-position-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
 #awm-extension-settings .awm-feature-position-row>select{width:110px;flex:0 0 110px}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-edit-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0}
-:is(#awmPresetSearchDialog,#awmPresetViewer) [data-editor]{flex:1;min-height:0;width:100%;resize:none;box-sizing:border-box;font:inherit;line-height:1.6;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);padding:10px}
-:is(#awmPresetSearchDialog,#awmPresetViewer) [hidden]{display:none!important}
-:is(#awmPresetSearchDialog,#awmPresetViewer) [data-save-status]{font-size:.85em;overflow-wrap:anywhere}
+#awmPresetSearchDialog .awm-preset-edit-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0}
+#awmPresetSearchDialog [data-editor]{flex:1;min-height:0;width:100%;resize:none;box-sizing:border-box;font:inherit;line-height:1.6;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);padding:10px}
+#awmPresetSearchDialog [hidden]{display:none!important}
+#awmPresetSearchDialog [data-save-status]{font-size:.85em;overflow-wrap:anywhere}
 
 /* V10.6: shared save and per-entry draft editing */
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-summary-row{display:flex;align-items:center;gap:8px;padding:0 var(--awm-tool-pad) 8px;flex:none}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-summary-row .awm-preset-summary{flex:1;padding:0;min-width:0}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-summary-row button{flex:none}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-save-status{padding:0 var(--awm-tool-pad);font-size:.8em;overflow-wrap:anywhere;flex:none}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-inline-editor{display:block;box-sizing:border-box;width:100%;max-width:100%;font:inherit;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:5px;padding:8px;margin-bottom:12px}
-:is(#awmPresetSearchDialog,#awmPresetViewer) textarea.awm-preset-inline-editor{min-height:200px;resize:vertical;white-space:pre-wrap}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-body{min-height:3em;cursor:text}
+#awmPresetSearchDialog .awm-preset-summary-row{display:flex;align-items:center;gap:8px;padding:0 var(--awm-tool-pad) 8px;flex:none}
+#awmPresetSearchDialog .awm-preset-summary-row .awm-preset-summary{flex:1;padding:0;min-width:0}
+#awmPresetSearchDialog .awm-preset-summary-row button{flex:none}
+#awmPresetSearchDialog .awm-preset-save-status{padding:0 var(--awm-tool-pad);font-size:.8em;overflow-wrap:anywhere;flex:none}
+#awmPresetSearchDialog .awm-preset-inline-editor{display:block;box-sizing:border-box;width:100%;max-width:100%;font:inherit;color:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor);border:1px solid var(--SmartThemeBorderColor);border-radius:5px;padding:8px;margin-bottom:12px}
+#awmPresetSearchDialog textarea.awm-preset-inline-editor{min-height:200px;resize:vertical;white-space:pre-wrap}
+#awmPresetSearchDialog .awm-preset-body{min-height:3em;cursor:text}
 
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-save-status:empty{display:none}
+#awmPresetSearchDialog .awm-preset-save-status:empty{display:none}
 
 /* V10.7: fill the detail pane while editing; scroll long text inside the editor. */
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-full.awm-preset-editing-content{display:flex;flex-direction:column;overflow:hidden}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-editing-content > .awm-preset-full-title,
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-editing-content > input.awm-preset-inline-editor{flex:none}
-:is(#awmPresetSearchDialog,#awmPresetViewer) .awm-preset-editing-content > textarea.awm-preset-inline-editor{flex:1 1 0;min-height:0;height:0;max-height:none;margin-bottom:0;resize:none;overflow:auto}
+#awmPresetSearchDialog .awm-preset-full.awm-preset-editing-content{display:flex;flex-direction:column;overflow:hidden}
+#awmPresetSearchDialog .awm-preset-editing-content > .awm-preset-full-title,
+#awmPresetSearchDialog .awm-preset-editing-content > input.awm-preset-inline-editor{flex:none}
+#awmPresetSearchDialog .awm-preset-editing-content > textarea.awm-preset-inline-editor{flex:1 1 0;min-height:0;height:0;max-height:none;margin-bottom:0;resize:none;overflow:auto}
 
 /* V10.14: new action buttons keep words horizontal and wrap as a whole. */
 #awmChatBackupDialog .awm-chat-backup-tools{display:flex;flex-wrap:wrap}
 #awmChatBackupDialog .awm-chat-backup-tools input[type=search]{flex:1 1 180px;width:auto}
 :is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-actions{display:flex;flex-wrap:wrap;gap:10px}
-:is(#awmChatBackupDialog,:is(#awmPresetSearchDialog,#awmPresetViewer)) button.menu_button,:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-actions button.menu_button{flex:0 0 auto;width:auto!important;min-width:max-content;white-space:nowrap;writing-mode:horizontal-tb;word-break:normal;min-height:40px;padding:8px 12px}
+:is(#awmChatBackupDialog,#awmPresetSearchDialog) button.menu_button,:is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-backup-actions button.menu_button{flex:0 0 auto;width:auto!important;min-width:max-content;white-space:nowrap;writing-mode:horizontal-tb;word-break:normal;min-height:40px;padding:8px 12px}
 
 /* Keep the prose switch and its mode on one row, aligned with position selectors. */
 :is(#awm-extension-settings,#awmMain.awm-panel-settings) .awm-inline-mode-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:nowrap;gap:12px;min-width:0}
