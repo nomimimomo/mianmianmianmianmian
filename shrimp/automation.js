@@ -1,9 +1,9 @@
-import {ctx,storyKey,storyContext} from './bridge.js?v=11.2';
-import {buildChatSetup,resolveMembers} from './chat-context.js?v=11.2';
-import {chatProtocol,parseChatResponse} from './features.js?v=11.2';
-import {digest,uid} from './core.js?v=11.2';
-import {trimConversation} from './retention.js?v=11.2';
-import {diagnostics} from './diagnostics.js?v=11.2';
+import {ctx,storyKey,storyContext} from './bridge.js?v=11.3';
+import {buildChatSetup,resolveMembers} from './chat-context.js?v=11.3';
+import {chatProtocol,parseChatResponse} from './features.js?v=11.3';
+import {digest,uid} from './core.js?v=11.3';
+import {trimConversation} from './retention.js?v=11.3';
+import {diagnostics} from './diagnostics.js?v=11.3';
 // Stability is an observable delay, not an assertion that the user approved the prose.
 export function storyBoundary(chat){return {end:chat.length-1,count:chat.filter(m=>!m.is_user&&!m.is_system&&String(m.mes||'').trim()).length};}
 export function observeStory(previous,fingerprint,now,delay){const since=previous?.fingerprint===fingerprint?previous.since:now;return {fingerprint,since,ready:now-since>=delay};}

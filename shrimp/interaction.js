@@ -1,11 +1,11 @@
-import {appendSystem} from './social.js?v=11.2';
-import {uid} from './core.js?v=11.2';
-import {diagnostics} from './diagnostics.js?v=11.2';
+import {appendSystem} from './social.js?v=11.3';
+import {uid} from './core.js?v=11.3';
+import {diagnostics} from './diagnostics.js?v=11.3';
 export const defaultGroupName=(self,members)=>[self,...members].join('、')+`（${members.length+1}）`;
 export function interactionMethods({esc,btn,avatar}) { return {
  updateBusyButtons(){
   for(const b of this.root.querySelectorAll('[data-action]')){
-   const a=b.dataset.action,busy=(a==='send'||a==='retryMessage'||a==='resendInline')?this.sending:a==='refresh'?this.refreshing:a==='loadModels'?this.loadingModels:a!=='tab'&&a!=='queue'&&this.pendingActions?.has(JSON.stringify([a,b.dataset.id||'']));
+   const a=b.dataset.action,busy=(a==='send'||a==='retryMessage'||a==='resendInline')?this.sending:a==='refresh'?false:a==='loadModels'?this.loadingModels:a!=='tab'&&a!=='queue'&&this.pendingActions?.has(JSON.stringify([a,b.dataset.id||'']));
    if(busy){if(!b.dataset.idleHtml)b.dataset.idleHtml=b.innerHTML;b.innerHTML='<span class="shr-spinner" aria-label="处理中"></span>';b.disabled=true;b.setAttribute('aria-busy','true');}
    else if(b.dataset.idleHtml){b.innerHTML=b.dataset.idleHtml;delete b.dataset.idleHtml;b.disabled=false;b.removeAttribute('aria-busy');}
   }
@@ -34,12 +34,12 @@ export function interactionMethods({esc,btn,avatar}) { return {
   this.groupPanel=true;this.render();
  },
  renderGroupPanel(){
-  const d=this.groupDraft,people=d.selecting?this.sortedContacts():d.members.map(id=>this.contact(id)).filter(Boolean);
-  return `<main class="shr-chat shr-group-page">${this.header(d.conversationId?'聊天信息':'创建群聊',btn('closeGroup','返回'))}<div class="shr-scroll"><div class="shr-members">${!d.selecting?`<div>${avatar(this.self())}<small>${esc(this.self().name)}</small></div>`:''}${people.map(p=>`<button data-action="toggleMember" data-id="${esc(p.id)}" class="${d.selecting&&d.members.includes(p.id)?'selected':''}"><span class="shr-avatar">${p.avatar?`<img src="${esc(p.avatar)}" alt="">`:'<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="14" r="7" fill="currentColor"/><path d="M7 36v-4a13 13 0 0 1 26 0v4" fill="currentColor"/></svg>'}</span><small>${esc(p.name)}</small>${d.removing?'<b>−</b>':d.selecting&&d.members.includes(p.id)?'<b>✓</b>':''}</button>`).join('')}${!d.selecting?btn('addGroupMembers','＋')+btn('removeGroupMembers','−'):''}</div>${d.selecting?btn('finishMembers','完成选择','','shr-primary'):''}<label class="shr-field">群聊名称<input id="shr-group-title" value="${esc(d.title)}" placeholder="${esc(defaultGroupName(this.self().name,d.members.map(id=>this.contact(id)?.name||'成员')))}"></label>${btn('commitGroup','保存','','shr-primary')}${d.conversationId?btn('soc:details','群资料')+btn('soc:search','查找聊天记录')+btn('soc:leave','退出群聊'):''}</div></main>`;
+  const d=this.groupDraft,candidates=(this.state.npcCandidates||[]).filter(p=>!this.state.contacts.some(c=>c.candidateId===p.id)).map(p=>({...p,id:'npc:'+p.id})),lookup=id=>this.contact(id)||candidates.find(p=>p.id===id),people=d.selecting?[...this.sortedContacts(),...candidates]:d.members.map(lookup).filter(Boolean);
+  return `<main class="shr-chat shr-group-page">${this.header(d.conversationId?'聊天信息':'创建群聊',btn('closeGroup','返回'))}<div class="shr-scroll"><div class="shr-members">${!d.selecting?`<div>${avatar(this.self())}<small>${esc(this.self().name)}</small></div>`:''}${people.map(p=>`<button data-action="toggleMember" data-id="${esc(p.id)}" class="${d.selecting&&d.members.includes(p.id)?'selected':''}"><span class="shr-avatar">${p.avatar?`<img src="${esc(p.avatar)}" alt="">`:'<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="14" r="7" fill="currentColor"/><path d="M7 36v-4a13 13 0 0 1 26 0v4" fill="currentColor"/></svg>'}</span><small>${esc(p.name)}</small>${d.removing?'<b>−</b>':d.selecting&&d.members.includes(p.id)?'<b>✓</b>':''}</button>`).join('')}${!d.selecting?btn('addGroupMembers','＋')+btn('removeGroupMembers','−'):''}</div>${d.selecting?btn('finishMembers','完成选择','','shr-primary'):''}<label class="shr-field">群聊名称<input id="shr-group-title" value="${esc(d.title)}" placeholder="${esc(defaultGroupName(this.self().name,d.members.map(id=>lookup(id)?.name||'成员')))}"></label>${btn('commitGroup','保存','','shr-primary')}${d.conversationId?btn('soc:details','群资料')+btn('soc:search','查找聊天记录')+btn('soc:leave','退出群聊'):''}</div></main>`;
  },
  async commitGroup(){
   if(this.sending||this.gen.busy)throw Error('请等待当前回复结束后修改成员');
-  const d=this.groupDraft;if(!d.members.length)throw Error('至少选择一位联系人');
+  const d=this.groupDraft;d.members=d.members.map(id=>{if(!id.startsWith('npc:'))return id;const p=this.state.npcCandidates?.find(x=>x.id===id.slice(4));if(!p)throw Error('候选人物已变化，请重新选择');let contact=this.state.contacts.find(c=>c.candidateId===p.id);if(!contact){contact={...p,id:uid(),candidateId:p.id,originalName:p.name};this.state.contacts.push(contact);}return contact.id;});if(!d.members.length)throw Error('至少选择一位联系人');
   let c=this.state.conversations.find(x=>x.id===d.conversationId);
   if(!c){c={id:uid(),messages:[],turns:[],draft:'',kind:'group'};this.state.conversations.push(c);}
   if(c.kind==='private'&&(d.members.length!==1||d.members[0]!==c.members[0]))c.kind='group';

@@ -2,7 +2,7 @@
 
 (function () {
     const AWM_SCRIPT_URL = document.currentScript?.src || import.meta.url;
-    const integrationURL = new URL('./integration.js?v=11.2', import.meta.url);
+    const integrationURL = new URL('./integration.js?v=11.3', import.meta.url);
     let integration;
     const ID = 'ame-style-management-v05';
     const PANEL_ID = 'awm-panel-v03';
@@ -3135,7 +3135,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '11.2', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '11.3', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -5355,7 +5355,7 @@
         openChat:mmOpenEntry,
         getData:()=>clone(load()), features:mmFeatures, searchPresets:mmPresetSearchOpen,
         log:(stage,status,details)=>mmLog(stage,'integration',status,'',undefined,details),
-        report:()=>({version:'11.2',plugin:'鲜虾鱼板面',events:clone(mmDiagnostics)}),
+        report:()=>({version:'11.3',plugin:'鲜虾鱼板面',events:clone(mmDiagnostics)}),
         exportDiagnostics:mmExportDiagnostics,
         flush:()=>integration.storage.flush(),
     };
@@ -5373,7 +5373,7 @@
         mmInjectExtensionSettings();
         mmBackupIdleInit();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V11.2 loaded');
+        console.log('[鲜虾鱼板面] V11.3 loaded');
         integration.attach(hostWindow.AmeFishboard);
     }
 
@@ -5389,7 +5389,7 @@
     }
     function mmStartupNotice(message,failed=false){
         let box=root.getElementById('fishboard-startup');
-        if(!box){box=root.createElement('section');box.id='fishboard-startup';box.setAttribute('role','status');box.style.cssText='position:fixed;z-index:2147483001;left:5vw;top:15vh;width:min(480px,90vw);box-sizing:border-box;padding:18px;border:1px solid var(--SmartThemeBorderColor,#666);border-radius:8px;background:var(--SmartThemeBlurTintColor,#292929);color:var(--SmartThemeBodyColor,#ddd);font:inherit;';box.innerHTML='<b>鲜虾鱼板面 V11.2</b><p data-message></p><button data-retry type="button">重新读取</button> <button data-report type="button">导出诊断日志</button> <button data-close type="button">关闭</button>';(root.body||root.documentElement).append(box);box.querySelector('[data-retry]').onclick=mmOpenEntry;box.querySelector('[data-report]').onclick=mmExportDiagnostics;box.querySelector('[data-close]').onclick=()=>box.remove();}
+        if(!box){box=root.createElement('section');box.id='fishboard-startup';box.setAttribute('role','status');box.style.cssText='position:fixed;z-index:2147483001;left:5vw;top:15vh;width:min(480px,90vw);box-sizing:border-box;padding:18px;border:1px solid var(--SmartThemeBorderColor,#666);border-radius:8px;background:var(--SmartThemeBlurTintColor,#292929);color:var(--SmartThemeBodyColor,#ddd);font:inherit;';box.innerHTML='<b>鲜虾鱼板面 V11.3</b><p data-message></p><button data-retry type="button">重新读取</button> <button data-report type="button">导出诊断日志</button> <button data-close type="button">关闭</button>';(root.body||root.documentElement).append(box);box.querySelector('[data-retry]').onclick=mmOpenEntry;box.querySelector('[data-report]').onclick=mmExportDiagnostics;box.querySelector('[data-close]').onclick=()=>box.remove();}
         box.querySelector('[data-message]').textContent=message;box.querySelector('[data-retry]').disabled=!failed;
     }
     let entryOpening;

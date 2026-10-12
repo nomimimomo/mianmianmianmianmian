@@ -1,5 +1,5 @@
-import {ctx,presets,snapshot} from './shrimp/bridge.js?v=11.2';
-import {orderedPrompts} from './shrimp/core.js?v=11.2';
+import {ctx,presets,snapshot} from './shrimp/bridge.js?v=11.3';
+import {orderedPrompts} from './shrimp/core.js?v=11.3';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const normalizeName=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/(?:版本|version|ver|v)\s*\d+(?:\.\d+)*/gi,'').replace(/\d+(?:\.\d+)+/g,'').replace(/[\s_\-·（）()【】\[\]]/g,'');
 export function familyHint(a,b){const sameName=normalizeName(a.name)===normalizeName(b.name)&&!!normalizeName(a.name),first=x=>x.preset.prompts.filter(p=>p.content?.trim()).slice(0,2).map(p=>p.content.replace(/\s/g,'').slice(0,160));const l=first(a),r=first(b),sameStart=l.length===2&&r.length===2&&l.every((s,i)=>s.length>30&&s===r[i]);return sameName||sameStart?'名称或开头两条相似，可能是同款预设的不同版本；请核对。':'未找到明确的同款线索，仍可手动对照。';}
@@ -40,7 +40,7 @@ export async function openPresetViewer({entryId='',referenceName='',localSource=
  for(const side of ['left','right'])q('body-'+side).onscroll=()=>sync(q('body-'+side),comparing?q('body-'+(side==='left'?'right':'left')):currentSearch());
  q('results').onscroll=()=>{if(!comparing)sync(q('results'),currentSearch());};
  const externalScroll=e=>{if(dialog.isConnected&&!comparing&&e.target===currentSearch())sync(e.target,index<0?q('results'):q('body-left'));};document.addEventListener('scroll',externalScroll,true);
- const close=()=>{document.removeEventListener('scroll',externalScroll,true);dialog.remove();};q('close').onclick=close;dialog.addEventListener('cancel',close);dialog.cleanup=close;
+ const close=()=>{document.removeEventListener('scroll',externalScroll,true);dialog.remove();};const backOrClose=()=>index>=0?list():close();q('close').onclick=backOrClose;dialog.addEventListener('cancel',e=>{e.preventDefault();backOrClose();});dialog.cleanup=close;
  dialog.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(rows[index]?.[b.dataset.copy]?.content||'');q('status').textContent='已复制条目';}catch{q('status').textContent='复制失败，请长按正文选择文字';}});
  let drag;dialog.querySelector('header').onpointerdown=e=>{if(e.target.closest('button'))return;const r=dialog.getBoundingClientRect();drag={x:e.clientX,y:e.clientY,left:r.left,top:r.top};e.currentTarget.setPointerCapture(e.pointerId);};dialog.querySelector('header').onpointermove=e=>{if(!drag)return;dialog.style.left=Math.max(0,Math.min(innerWidth-dialog.offsetWidth,drag.left+e.clientX-drag.x))+'px';dialog.style.top=Math.max(0,Math.min(innerHeight-50,drag.top+e.clientY-drag.y))+'px';};dialog.querySelector('header').onpointerup=()=>drag=null;
  if(localSource){q('left').innerHTML='<option>'+esc(localSource.name)+' · '+esc(localSource.version)+'</option>';q('left').disabled=true;q('compare').hidden=true;q('sync').parentElement.hidden=true;q('sync-label').hidden=true;q('scope').value='all';dialog.querySelector('.awm-tool-head b').textContent='鲜虾 Prompt 开关';const save=document.createElement('button');save.textContent='保存独立开关';save.onclick=async()=>{save.disabled=true;try{await onSave(localRows);close();}catch(e){q('status').textContent=e.message;}finally{save.disabled=false;}};dialog.querySelector('footer').after(save);}

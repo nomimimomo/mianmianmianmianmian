@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "鲜虾鱼板面",
-  "version": "11.2",
+  "version": "11.3",
   "license": "UNLICENSED",
   "generate_interceptor": "ameShrimpSocialInterceptor"
 }

@@ -1,6 +1,6 @@
-import {readerLocation,validateReaderMessage} from './reader-link.js?v=11.2';
-import {uid} from './core.js?v=11.2';
-import {diagnostics} from './diagnostics.js?v=11.2';
+import {readerLocation,validateReaderMessage} from './reader-link.js?v=11.3';
+import {uid} from './core.js?v=11.3';
+import {diagnostics} from './diagnostics.js?v=11.3';
 export function webURL(value){const u=new URL(value.trim());if(!['https:','http:'].includes(u.protocol)||u.username||u.password)throw Error('请填写完整的 http / https 网页地址');return u.href;}
 export function webBook(v,old={}){return {...old,id:old.id||uid(),kind:'book',sourceType:'web',title:v.title.trim()||new URL(webURL(v.url)).hostname,url:webURL(v.url),coverUrl:v.coverUrl?.trim()?webURL(v.coverUrl):'',group:v.group?.trim()||'',createdAt:old.createdAt||Date.now()};}
 export function webReadingMethods({esc,btn,field}){return {
@@ -22,9 +22,10 @@ export function webReadingMethods({esc,btn,field}){return {
  async webAction(a,id){
  diagnostics.log('reading.web',{operation:a});
  if(a==='platform'){
-  const platforms={jinjiang:{title:'晋江文学城',url:'https://wap.jjwxc.net/'},quark:{title:'夸克网盘',url:'https://pan.quark.cn/'},weread:{title:'微信读书',url:'https://weread.qq.com/'}};
+  const platforms={jinjiang:{title:'晋江文学城',url:'https://wap.jjwxc.net/'},quark:{title:'夸克浏览器',url:'https://www.quark.cn/'},weread:{title:'微信读书',url:'https://weread.qq.com/'}};
   const platform=platforms[id];if(!platform)throw Error('未知阅读应用');
   let row=this.reading.rows('book').find(r=>r.platformId===id);
+  if(row&&id==='quark'&&new URL(row.url).hostname==='pan.quark.cn'){row={...row,...platform,lastUrl:platform.url};await this.reading.put(row.place,row);}
   if(!row){row={...webBook(platform),platformId:id,sourceKind:'app'};const place=this.readingDefault||'browser';await this.reading.put(place,row);row={...row,place};}
   return this.webAction('open',row.place+':'+row.id);
  }

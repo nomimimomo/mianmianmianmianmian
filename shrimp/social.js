@@ -1,10 +1,10 @@
-import {uid,clone} from './core.js?v=11.2';
-import {ctx,storyKey} from './bridge.js?v=11.2';
-import {diagnostics} from './diagnostics.js?v=11.2';
+import {uid,clone} from './core.js?v=11.3';
+import {ctx,storyKey} from './bridge.js?v=11.3';
+import {diagnostics} from './diagnostics.js?v=11.3';
 export const defaultSocialRules=`群成员按各自的生活、关系和当下话题自然聊天。每轮可以没人发言，也可以同一人连续发多条。允许互相交流、插话、跑题、接梗、争论和潜水。不按名单轮流回复，不要求回应User，不默认由Char主持。不强行限制每句话字数。引用、@和群事件作为具体互动理解。延续已有话题，但不为热闹制造无关消息。`;
 
 export function appendSystem(c,text,event={}){const m={id:uid(),side:'system',kind:'system',text,event,createdAt:Date.now(),status:'pending'};c.messages.push(m);c.updatedAt=m.createdAt;return m;}
-export function messageContext(m,c){return {id:m.id,sender:m.side==='user'?'User':m.contactId||m.side,text:m.revoked?'撤回了一条消息':m.text,kind:m.kind||'text',replyTo:m.replyTo||null,quoted:m.replyTo?(()=>{const q=c.messages.find(x=>x.id===m.replyTo);return q?{id:q.id,text:q.revoked?'消息已撤回':q.text,sender:q.contactId||q.side}:null;})():null,mentions:m.mentions||[],event:m.event||null};}
+export function messageContext(m,c){return {id:m.id,sender:m.side==='user'?'User':m.contactId||m.side,text:m.revoked?'撤回了一条消息':m.text,kind:m.kind||'text',replyTo:m.replyTo||null,quoted:m.replyTo?(()=>{const q=c.messages.find(x=>x.id===m.replyTo);return q?{id:q.id,text:q.revoked?'消息已撤回':q.text,sender:q.contactId||q.side}:null;})():null,mentions:m.mentions||[],event:m.event||null,redpacket:m.redpacket?{id:m.redpacket.id,count:m.redpacket.count,mode:m.redpacket.mode,note:m.redpacket.note}:undefined};}
 export function socialMethods({esc,btn,field}){return {
  socialSettings(){const s=this.state.settings;this.modal('群聊规则',`<label class="shr-field">群聊规则<textarea name="socialRules" rows="12">${esc(s.socialRules||defaultSocialRules)}</textarea></label>${field('patSuffix','我的拍一拍后缀',s.patSuffix||'')}`,btn('soc:saveRules','保存','','shr-primary'));},
  async socialAction(a,id){const c=this.conversation(),m=c?.messages.find(x=>x.id===id);

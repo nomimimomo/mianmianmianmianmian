@@ -10,7 +10,7 @@ export function installPullRefresh(root,{key,busy,refresh,error,log}){
  let mouse=null;
  root.addEventListener('pointerdown',e=>{
   if(e.pointerType!=='mouse'||e.button!==0||busy())return;
-  const el=e.target.closest('[data-pull-refresh]');if(!el||e.target.closest('button:not(.shr-pull-hint),a,input,textarea'))return;
+  const el=e.target.closest('[data-pull-refresh]');if(!el||e.target.closest('button,a,input,textarea'))return;
   mouse={el,x:e.clientX,y:e.clientY,last:e.clientY,distance:0,key:key(),type:el.dataset.pullRefresh};
   el.setPointerCapture?.(e.pointerId);e.preventDefault();
  });

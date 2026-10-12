@@ -1,13 +1,13 @@
-import {diagnostics} from './diagnostics.js?v=11.2';
+import {diagnostics} from './diagnostics.js?v=11.3';
 export function integrationMethods({esc,btn,avatar}){return {
  async fishboardAction(a){
-  if(['mianmian','styles','settings'].includes(a)){window.AmeFishboard.open(a);if(document.getElementById('awm-panel-v03')?.style.display!=='none')this.close();return;}
+  if(['mianmian','styles','settings'].includes(a)){this.hostReturn=true;window.AmeFishboard.open(a);if(document.getElementById('awm-panel-v03')?.style.display!=='none')this.close();return;}
   if(a==='search')return window.AmeFishboard.searchPresets();
   if(a==='presets')return window.AmeFishboard.viewPresets();
   if(a==='reading')return this.readingOpen();
   if(a==='miniapps'){this.tab='miniapps';this.detail=false;this.render();return;}
   if(a==='miniapp'){
-   await this.readerSaveChain;this.webKey=null;this.txtKey=null;this.webReturn='miniapps';
+   await this.readerSaveChain;this.webKey=null;this.txtKey=null;this.webReturn='reading';
    const id=arguments[1];this.state.miniappRecent=[id,...(this.state.miniappRecent||[]).filter(x=>x!==id)].slice(0,8);await this.save();
    if(['styles','mianmian','presets','search'].includes(id))return this.fishboardAction(id);
    if(id==='excerpts'){this.readingKind='excerpt';return this.readingOpen();}
@@ -17,15 +17,9 @@ export function integrationMethods({esc,btn,avatar}){return {
   if(a==='report')return window.AmeFishboard.exportDiagnostics();
   if(a==='preferences'){this.modal('设置',`<div class="shr-settings-links">${btn('fb:settings','存储空间与清理 ›')}${btn('settings','聊天预设与 API ›')}${btn('soc:settings','群聊规则 ›')}${btn('story:settings','跟随正文发消息 ›')}${btn('feedSettings','朋友圈与公众号 ›')}${btn('proactiveSettings','主动聊天 ›')}${btn('export','聊天备份 ›')}${btn('import','导入聊天备份 ›')}${btn('fb:report','错误报告 ›')}</div>`);return;}
  },
- renderMe(){return `<main class="shr-wide">${this.header('我')}<div class="shr-scroll shr-me"><div class="shr-profile">${avatar(this.self())}<div><h2>${esc(this.self().name)}</h2><small>鲜虾鱼板面</small></div></div><div class="shr-settings-links">${btn('wallet:open','◈　服务　›')}${btn('fb:presets','⌕　查看预设　›')}${btn('fb:miniapps','◉　小程序　›')}${btn('fb:preferences','⚙　设置　›')}</div></div></main>`;},
- renderDiscover(){return `<main class="shr-wide">${this.header('发现')}<div class="shr-scroll shr-discover"><div class="shr-settings-links">${btn('tab','◎　朋友圈　›','moments')}${btn('fb:miniapps','◉　小程序　›')}${btn('publishers','▥　公众号　›')}</div></div></main>`;},
- renderMiniapps(){
-  const flags=window.AmeFishboard.features?.()||{};
-  const apps=[['styles','收藏','文','styles'],['mianmian','备忘录','记','editor'],['presets','查看预设','预','search'],['search','搜索预设','搜','search'],['excerpts','摘抄','摘'],['jinjiang','晋江文学城','晋'],['book','书架','书'],['quark','夸克','夸'],['weread','微信读书','读']].filter(a=>!a[3]||flags[a[3]]!==false);
-  const tiles=rows=>rows.map(([id,title,icon])=>`<button class="shr-mini-tile" data-action="fb:miniapp" data-id="${id}" data-search="${esc(title)}"><i>${icon}</i><span>${title}</span></button>`).join('');
-  const recent=(this.state.miniappRecent||[]).map(id=>apps.find(a=>a[0]===id)).filter(Boolean);
-  return `<main class="shr-wide shr-miniapps">${this.header('小程序')}<div class="shr-scroll"><input id="shr-search" type="search" placeholder="搜索小程序" aria-label="搜索小程序">${recent.length?`<h3>最近使用</h3><div class="shr-mini-grid">${tiles(recent)}</div>`:''}<h3>我的小程序</h3><div class="shr-mini-grid">${tiles(apps)}</div></div></main>`;
- },
+ renderMe(){return `<main class="shr-wide">${this.header('我')}<div class="shr-scroll shr-me"><div class="shr-profile">${avatar(this.self())}<div><h2>${esc(this.self().name)}</h2><small>微信</small></div></div><div class="shr-settings-links">${btn('wallet:open','服务　›')}${btn('fb:settings','存储空间与清理　›')}${btn('settings','聊天预设与 API　›')}${btn('soc:settings','群聊规则　›')}${btn('story:settings','跟随正文发消息　›')}${btn('feedSettings','朋友圈与公众号设置　›')}${btn('proactiveSettings','主动聊天　›')}${btn('export','聊天备份　›')}${btn('import','导入聊天备份　›')}${btn('fb:report','错误报告　›')}</div></div></main>`;},
+ renderDiscover(){return this.renderFeed();},
+ renderMiniapps(){return this.renderReading();},
  message(id){return this.messageMenu(id);},
  messageMenu(id){const m=this.conversation()?.messages.find(x=>x.id===id);if(!m||m.revoked)return;this.root.querySelector('.shr-message-menu')?.remove();const anchor=[...this.root.querySelectorAll('[data-message-id]')].find(e=>e.dataset.messageId===id)?.querySelector('.shr-bubble,.shr-file-card,.shr-transfer')||[...this.root.querySelectorAll('[data-message-id]')].find(e=>e.dataset.messageId===id);if(!anchor)return;
   const menu=document.createElement('div');menu.className='shr-message-menu';menu.setAttribute('role','toolbar');menu.setAttribute('aria-label','消息操作');menu.innerHTML=btn('soc:quote','引用',id)+btn('soc:copy','复制',id)+(m.side==='user'?btn('editChatMessage','编辑',id)+btn('retryMessage','重新生成回复',id)+btn('soc:revoke','撤回',id):'')+btn('soc:delete','删除',id);this.root.append(menu);

@@ -1,7 +1,8 @@
-import {timeoutSignal} from '../compat.js?v=11.2';
-import { instrument } from './diagnostics.js?v=11.2';
-import { upgradeFeatures } from './features.js?v=11.2';
-import { freshState, validateState, uid } from './core.js?v=11.2';
+import {captureScope} from './ecosystem.js?v=11.3';
+import {timeoutSignal} from '../compat.js?v=11.3';
+import { instrument } from './diagnostics.js?v=11.3';
+import { upgradeFeatures } from './features.js?v=11.3';
+import { freshState, validateState, uid } from './core.js?v=11.3';
 const PATH = '/user/files/ame-fishboard-social-v1.json';
 export class Store {
     constructor(ctx, status) { this.ctx = ctx; this.status = status; this.revision = null; this.state = null; this.chain = Promise.resolve(); this.blocked = false; }
@@ -24,7 +25,7 @@ export class Store {
             const run = async () => {
                 const remote = await this.read();
                 if ((remote?.revision ?? null) !== this.revision) { this.blocked = true; throw new Error('其他页面或设备已修改鲜虾数据。当前草稿仍在，请先导出，再重新加载'); }
-                const revision = uid(), payload = JSON.stringify({ revision, data: this.state });
+                captureScope(this.state);const revision = uid(), payload = JSON.stringify({ revision, data: this.state });
                 if (new Blob([payload]).size > 25 * 1024 * 1024) throw new Error('鲜虾数据超过 25MB，请导出备份并清理信息流或压缩头像后重试');
                 const bytes = new TextEncoder().encode(payload); let binary = '';
                 for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));

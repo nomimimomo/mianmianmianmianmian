@@ -1,4 +1,4 @@
-export const VERSION = '11.2';
+export const VERSION = '11.3';
 export const clone = x => JSON.parse(JSON.stringify(x));
 export function uid() {
     if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
@@ -22,6 +22,7 @@ export function validateState(x) {
     out.settings = { ...defaults, ...out.settings, feeds: { moments: { ...defaults.feeds.moments, ...out.settings.feeds?.moments }, news: { ...defaults.feeds.news, ...out.settings.feeds?.news } } };
     out.styles ||= []; out.ignored ||= {}; out.settings.promptToggles ||= {};
     for (const c of out.conversations) { if (!c.id || !Array.isArray(c.messages) || !Array.isArray(c.members)) throw new Error('会话数据不完整'); c.turns ||= []; }
+    for(const scope of Object.values(out.socialScopes||{})){if(!scope||!Array.isArray(scope.contacts)||!Array.isArray(scope.conversations))throw Error('聊天文档分区数据不完整');for(const c of scope.conversations){if(!c.id||!Array.isArray(c.messages)||!Array.isArray(c.members))throw Error('聊天文档会话数据不完整');c.turns||=[];}}
     return out;
 }
 export function orderedPrompts(preset, overrides = {}) {

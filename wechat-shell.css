@@ -1,4 +1,4 @@
-@import url('./shrimp/style.css?v=11.2');
+@import url('./shrimp/style.css?v=11.3');
 /* Fishboard controllers, editor frames and element IDs remain original. */
 #awm-panel-v03{--awm-safe-ink:var(--SmartThemeBodyColor);background:var(--SmartThemeBlurTintColor,#292929)!important;color:var(--SmartThemeBodyColor,#ddd)!important;border:1px solid var(--SmartThemeBorderColor,#555)!important;border-radius:8px!important;box-shadow:0 18px 60px #0003!important;font-family:var(--mainFontFamily,system-ui),sans-serif}
 #awm-panel-v03 .awm-head{background:var(--SmartThemeBlurTintColor,#292929);border-bottom:1px solid var(--SmartThemeBorderColor,#555);min-height:48px}#awm-panel-v03 .awm-title{font-weight:500}#awm-panel-v03 .awm-tab.active{color:var(--SmartThemeQuoteColor,#79a58b);background:var(--SmartThemeUserMesBlurTintColor,#40564a)}#awm-panel-v03 button{box-shadow:none;text-shadow:none}#awm-panel-v03 .awm-input,#awm-panel-v03 .awm-textarea{background:var(--SmartThemeChatTintColor,#333);color:var(--SmartThemeBodyColor,#ddd)}#awm-panel-v03 .awm-card{background:var(--SmartThemeChatTintColor,#333)}#awm-panel-v03 [data-fb-home]{color:var(--SmartThemeBodyColor,#ddd);background:transparent;border:0;white-space:nowrap}
@@ -104,3 +104,44 @@ html #shrimp-app .shr-wallet-links{display:flex;justify-content:center;gap:20px;
 html #shrimp-app .shr-wallet-links button{border:0;background:none;color:var(--shr-accent);font-size:13px}
 html #shrimp-app .shr-modal:has([aria-label="选择提醒的人"]){padding:0;background:var(--shr-bg);backdrop-filter:none}
 html #shrimp-app .shr-modal [aria-label="选择提醒的人"]{width:100%;height:100%;max-height:100%;border-radius:0;box-shadow:none;border:0}
+
+/* V11.3: one shelf, visible settings and consistent child navigation. */
+html #shrimp-app [hidden]{display:none!important}
+html #shrimp-app .shr-head .shr-close{display:block!important}
+html #shrimp-app .shr-head .shr-back{display:none!important}
+html #shrimp-app .shr-settings-links button{border:0;border-bottom:1px solid color-mix(in srgb,var(--shr-fg) 12%,transparent);background:transparent;margin:0;min-height:48px}
+html #shrimp-app .shr-reading-apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(82px,1fr));gap:12px;max-width:960px}
+html #shrimp-app .shr-reading-apps button{min-width:0;display:flex;align-items:center;flex-direction:column;gap:7px;padding:6px;font-size:12px}
+html #shrimp-app .shr-mini-section{flex-shrink:0;padding:12px 18px}
+html #shrimp-app .shr-feed-state{font-size:12px;opacity:.7;padding:8px}
+html #shrimp-app .shr-redpacket{background:#c75b41;color:#fff;border:0;border-radius:5px;padding:16px;width:230px;max-width:100%;text-align:left}
+html #shrimp-app .shr-redpacket small{border-top:1px solid #ffffff40;padding-top:8px;color:inherit}
+html #shrimp-app .shr-packet-receipt{font-size:12px;opacity:.8}
+@media(max-width:640px){html #shrimp-app .shr-nav{grid-template-columns:repeat(5,minmax(0,1fr));gap:0}html #shrimp-app .shr-reading-apps{grid-template-columns:repeat(4,minmax(0,1fr))}html #shrimp-app .shr-app-icon{width:42px;height:42px;font-size:16px}html #shrimp-app .shr-mini-section{padding:8px}html #shrimp-app .shr-nav button{min-width:0}}
+html #shrimp-app .shr-settings-links{background:transparent}
+html #shrimp-app .shr-reading-apps{max-height:none;overflow:visible}
+
+/* Consistent hierarchy and message alignment across all viewport sizes. */
+html #shrimp-app .shr-head b{font-size:17px;font-weight:600}
+html #shrimp-app h2{font-size:17px;font-weight:600}
+html #shrimp-app h3,html #shrimp-app h4{font-size:14px;font-weight:500}
+html #shrimp-app .shr-npc-section{margin:0 16px 12px 68px;border:0}
+html #shrimp-app .shr-npc-section summary{font-size:12px;font-weight:400;opacity:.75;cursor:pointer;padding:8px 0}
+html #shrimp-app .shr-npc-row{display:flex;align-items:center;gap:8px;border-bottom:1px solid color-mix(in srgb,var(--shr-fg) 10%,transparent)}
+html #shrimp-app .shr-npc-row>button:first-child{min-width:0;flex:1;text-align:left;padding:10px 0}
+html #shrimp-app .shr-npc-row small{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;opacity:.65}
+html #shrimp-app .shr-npc-row button{font-size:12px;font-weight:400;background:transparent;border:0}
+html #shrimp-app .shr-message{display:flex;align-items:flex-start;justify-content:flex-start;width:fit-content;max-width:88%;margin-left:0;margin-right:auto;gap:10px;padding:0}
+html #shrimp-app .shr-message>[data-pat]{display:block;flex:0 0 38px;width:38px;margin:0;padding:0}
+html #shrimp-app .shr-message .shr-avatar{width:38px;height:38px;min-width:38px;flex:0 0 38px;margin:0}
+html #shrimp-app .shr-message>div{min-width:0;margin:0;padding:0;display:flex;flex-direction:column;align-items:flex-start}
+html #shrimp-app .shr-message>div>small{margin:0 0 5px;padding:0;font-size:11px;font-weight:400}
+html #shrimp-app .shr-message.mine{margin-right:0;margin-left:auto;flex-direction:row-reverse}
+html #shrimp-app .shr-message.mine>div{align-items:flex-end}
+html #shrimp-app .shr-bubble{max-width:100%;margin:0;text-align:left;overflow-wrap:anywhere}
+@media(max-width:640px){html #shrimp-app .shr-message{max-width:94%;gap:9px}html #shrimp-app .shr-npc-section{margin-left:62px}}
+
+html #shrimp-app .shr-row{background:transparent;color:var(--shr-fg);border-bottom:1px solid color-mix(in srgb,var(--shr-fg) 10%,transparent)}
+html #shrimp-app .shr-row.selected{background:var(--shr-other)}
+html #shrimp-app .shr-contact-main,html #shrimp-app .shr-row>button{color:var(--shr-fg);background:transparent;border:0}
+html #shrimp-app #shr-search{background:var(--shr-other);color:var(--shr-fg)}
