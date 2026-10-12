@@ -1,7 +1,9 @@
 'use strict';
 
 (function () {
-    const AWM_SCRIPT_URL = document.currentScript?.src || '';
+    const AWM_SCRIPT_URL = document.currentScript?.src || import.meta.url;
+    const integrationURL = new URL('./integration.js?v=11.1', import.meta.url);
+    let integration;
     const ID = 'ame-style-management-v05';
     const PANEL_ID = 'awm-panel-v03';
     const STYLE_ID = 'awm-style-v05';
@@ -54,6 +56,7 @@
         const tags = mmParseTags(s?.tags || []);
         if (oldGroup) tags.push(...oldGroup.split(/[,，、\s]+/));
         return {
+            ...clone(s || {}),
             id: s?.id || uid('style'),
             name,
             author: String(s?.author || ''),
@@ -65,6 +68,7 @@
 
     function normalizeData(x) {
         return {
+            ...clone(x || {}),
             styles: Array.isArray(x?.styles) ? x.styles.map(normalizeStyle) : [],
             quotes: Array.isArray(x?.quotes) ? x.quotes : [],
             quoteGroups: Array.isArray(x?.quoteGroups) ? x.quoteGroups : [],
@@ -87,16 +91,7 @@
     }
 
     function readTavernData() {
-        if (!canUseTavernStorage()) return null;
-        try {
-            const stored = mmHelperFn('getVariables') && mmHelperFn('insertOrAssignVariables')
-                ? mmHelperFn('getVariables')({ type: 'global' })?.[TAVERN_DATA_KEY]
-                : JSON.parse(hostWindow.SillyTavern.getContext().accountStorage.getItem(TAVERN_DATA_KEY) || 'null');
-            return stored && typeof stored === 'object' ? normalizeData(stored) : null;
-        } catch (err) {
-            console.error('[鲜虾鱼板面] 读取酒馆数据失败', err);
-            return null;
-        }
+        return integration.storage.read();
     }
 
     function mmOwnedStorage(store,key,value,remove=false){
@@ -105,26 +100,13 @@
         const after=store.getItem(key);mmLog('settingsWrite','settings',before===after?'unchanged':'field-updated','',undefined,{storage:store===hostWindow.localStorage?'localStorage':'accountStorage',fields:before===after?[]:[key],operation:remove?'remove':'set',serverConfirmed:false});
     }
     function writeTavernData(data) {
-        if (!canUseTavernStorage()) return false;
-        if(mmHelperFn('insertOrAssignVariables'))
-            mmHelperFn('insertOrAssignVariables')({ [TAVERN_DATA_KEY]: clone(data) }, { type: 'global' });
-        else mmOwnedStorage(hostWindow.SillyTavern.getContext().accountStorage,TAVERN_DATA_KEY,JSON.stringify(data));
-        mmLog('settingsWrite','settings','requested','',undefined,{fields:['extension_settings.variables.global.'+TAVERN_DATA_KEY],serverConfirmed:false});return true;
+        integration.storage.write(clone(data));
+        return true;
     }
 
     function clearTavernData() {
-        if (!canUseTavernStorage()) return false;
-        try {
-            if (!mmHelperFn('getVariables') || !mmHelperFn('insertOrAssignVariables')) mmOwnedStorage(hostWindow.SillyTavern.getContext().accountStorage,TAVERN_DATA_KEY,undefined,true);
-            else if (mmHelperFn('deleteVariable')) mmHelperFn('deleteVariable')(TAVERN_DATA_KEY, { type: 'global' });
-            else {
-                throw Error('缺少单字段删除接口，未清空资料；已阻止整体替换全局变量');
-            }
-            return true;
-        } catch (err) {
-            console.error('[鲜虾鱼板面] 删除酒馆数据失败', err);
-            return false;
-        }
+        try{integration.storage.write(clone(DEFAULT));return true;}
+        catch(error){mmLog('clear','settings','failed',error);return false;}
     }
 
     function hydrateTavernData() {
@@ -733,6 +715,7 @@
     }
 
     function open() {
+        if (integration.storage.error) { integration.showFailure(); return; }
         addStyle();
         makePanel();
         const panel = root.getElementById(PANEL_ID);
@@ -963,7 +946,7 @@
                     <details class="awm-details" data-style-key="${esc(s.id)}" ${Object.prototype.hasOwnProperty.call(styleUIState.styles, s.id) && styleUIState.styles[s.id] ? 'open' : ''} style="flex:1;min-width:0"><summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:5px;min-width:0;flex-wrap:nowrap">
                         <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${mmHighlight(s.name,main.querySelector('#asq2StyleSearch').value.trim())}</b>
                         
-                        <span class="awm-count" style="flex:0 0 auto">${s.content.length}字</span>
+                        <span class="awm-count" style="flex:0 0 auto">${integration.tokenMarkup(s.content)}</span>
                         <span class="awm-card-actions"><button class="awm-btn" data-copy="${esc(s.id)}" type="button">复制</button><button class="awm-btn" data-edit="${esc(s.id)}" type="button">编辑</button></span>
                     </summary>
                     <div style="white-space:pre-wrap;line-height:1.6;margin-top:7px;max-height:280px;overflow:auto">${mmHighlight(s.content,main.querySelector('#asq2StyleSearch').value.trim())}</div></details></div>
@@ -1084,12 +1067,12 @@
             <input class="awm-input" id="fAuthor" placeholder="作者（可留空）" value="${esc(old?.author||'')}">
             ${makeTagEditor(old?.tags||[])}
             <textarea class="awm-area awm-style-content" id="fContent" placeholder="把文风当作 TXT 直接编辑。换行会原样保留……">${esc(old?.content||'')}</textarea>
-            <div class="awm-count-line"><span id="fCount">${(old?.content||'').length}字</span></div>
+            <div class="awm-count-line"><span id="fCount">${integration.tokenMarkup(old?.content||'')}</span></div>
             <div class="awm-style-note"><label for="fNote">备注</label><textarea id="fNote" class="awm-area" placeholder="写一些自己的话或感想……">${esc(old?.note||'')}</textarea></div></div>`;
         bindTagEditor(main);
         const countEl=main.querySelector('#fCount'),contentEl=main.querySelector('#fContent');
         contentEl.addEventListener('focus',awmStartStyleFocus);
-        contentEl.addEventListener('input',()=>countEl.textContent=contentEl.value.length+'字');
+        contentEl.addEventListener('input',()=>integration.countInto(countEl,contentEl.value));
         main.querySelector('#fShowReplace').onclick=()=>{
             const panel=main.querySelector('#fReplacePanel');panel.hidden=!panel.hidden;
             main.querySelector('#fShowReplace').setAttribute('aria-expanded',String(!panel.hidden));
@@ -1105,7 +1088,7 @@
                 const next=load();next.styles.forEach(item=>{item.content=item.content.split(find).join(replacement)});save(next);
                 if(id&&next.styles.some(item=>item.id===id)){
                     contentEl.value=contentEl.value.split(find).join(replacement);
-                    countEl.textContent=contentEl.value.length+'字';
+                    integration.countInto(countEl,contentEl.value);
                 }
                 toast('已替换 '+count+' 处','success');
             });
@@ -1129,7 +1112,7 @@
                 main.querySelector('#fAuthor').value='';
                 contentEl.value=block.content||text;
                 const prepared=awmPrepareStyle({content:contentEl.value});contentEl.value=prepared.content;main.querySelector('#fNote').value=prepared.note;
-                countEl.textContent=contentEl.value.length+'字';
+                integration.countInto(countEl,contentEl.value);
                 return;
             }
             let picker=main.querySelector('#fImportPicker');
@@ -1146,7 +1129,7 @@
                 main.querySelector('#fAuthor').value='';
                 contentEl.value=block.content||'';
                 const prepared=awmPrepareStyle({content:contentEl.value});contentEl.value=prepared.content;main.querySelector('#fNote').value=prepared.note;
-                countEl.textContent=contentEl.value.length+'字';
+                integration.countInto(countEl,contentEl.value);
             };
             picker.onchange=fill;fill();
         };
@@ -1258,7 +1241,7 @@
             <label style="display:flex;align-items:center;gap:6px;padding:4px 2px;border-bottom:1px solid var(--SmartThemeBorderColor);cursor:pointer">
                 <input type="checkbox" class="json-pick" data-i="${i}" ${c.content.trim().length >= MIN_LEN ? 'checked' : ''}>
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name || '（未命名）')}</span>
-                <span style="opacity:.6;font-size:.82em;flex:0 0 auto">${c.content.length}字</span>
+                <span style="opacity:.6;font-size:.82em;flex:0 0 auto">${integration.tokenMarkup(c.content)}</span>
             </label>`).join('');
 
         layer.appendChild(box);
@@ -2337,6 +2320,7 @@
                     const hits=text?mmPresetHits(prompt,text):[];if(text&&!hits.length)continue;
                     count+=hits.length;items++;
                     const row=el('article','awm-preset-result'),head=el('div','awm-preset-result-head');
+                    row.dataset.presetEntry=prompt.identifier;
                     const name=el('button','awm-preset-entry-name');name.type='button';mmPresetHighlight(name,prompt.name||'未命名条目',text);
                     name.onclick=()=>showEntry(prompt.identifier);head.append(name);if(text)head.append(el('span','awm-preset-hit-count',hits.length+' 处'));row.append(head);
                     mmPresetHitGroups(prompt,hits).forEach(({hit,index})=>{
@@ -3008,6 +2992,7 @@
         }
 
         return {
+            ...clone(x),
             styles:x.styles.map(normalizeStyle),
             quotes:x.quotes,
             quoteGroups:unique(x.quoteGroups),
@@ -3016,10 +3001,11 @@
         };
     }
 
-    function exportAllData(){
+    async function exportAllData(){
         try{
             mmPersistCurrent('char'); mmPersistCurrent('user');
             const pack=makeDataPackage(load());
+            pack.modules=await integration.exportModules();
             const text=JSON.stringify(pack,null,2);
             const blob=new Blob([text],{type:'application/json;charset=utf-8'});
             const url=hostWindow.URL.createObjectURL(blob);
@@ -3067,9 +3053,13 @@
             try{
                 const text=await file.text();
                 const next=parseDataPackage(text);
+                await integration.validateModules(JSON.parse(text).modules);
                 // .mian 已通过格式校验，直接覆盖当前插件数据。
                 // 不使用浏览器 confirm，避免酒馆/手机端弹窗兼容问题。
+                if(!JSON.parse(text).modules)await integration.preserveModules();
                 save(next);
+                await integration.storage.flush();
+                await integration.importModules(JSON.parse(text).modules);
                 render('styles');
                 toast('数据导入成功','success');
             }catch(err){
@@ -3144,7 +3134,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '10.5', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '11.1', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3271,6 +3261,7 @@
         const data = normalizeData(x);
         const old = x && typeof x.mianmian === 'object' ? x.mianmian : {};
         data.mianmian = {
+            ...clone(old),
             drafts: {
                 char: old.drafts && typeof old.drafts.char === 'object' && old.drafts.char ? old.drafts.char : {},
                 user: old.drafts && typeof old.drafts.user === 'object' && old.drafts.user ? old.drafts.user : {}
@@ -3292,6 +3283,7 @@
         return readTavernData() || mmReadBrowser() || loadLocalData();
     }
     function mmWriteData(data) {
+        integration.storage.assertWritable();
         const value = mmNormalize(data);
         if (mmStorageMode() === 'browser') {
             hostWindow.localStorage.setItem(MM_LOCAL_KEY, JSON.stringify(value));
@@ -3308,7 +3300,10 @@
         const original = mmStorageMode(), value = mmNormalize(load());
         if (mode === 'tavern') {
             if (!canUseTavernStorage()) throw new Error('酒馆变量接口不可用');
+            await integration.storage.prepare('tavern',()=>hostWindow.SillyTavern?.getContext?.(),mmHelperFn);
+            integration.storage.assertWritable();
             writeTavernData(value);
+            await integration.storage.flush();
             const check = readTavernData();
             if (!check || JSON.stringify(mmNormalize(check)) !== JSON.stringify(value)) throw new Error('酒馆存储校验失败');
         } else {
@@ -4817,7 +4812,7 @@
         let drag = null;
         button.addEventListener('pointerdown', e => { drag = { id:e.pointerId,x:e.clientX,y:e.clientY,left:button.getBoundingClientRect().left,top:button.getBoundingClientRect().top,moved:false }; button.setPointerCapture(e.pointerId); });
         button.addEventListener('pointermove', e => { if (!drag || drag.id !== e.pointerId) return; const dx=e.clientX-drag.x,dy=e.clientY-drag.y; if (Math.abs(dx)+Math.abs(dy)>6) drag.moved=true; if (!drag.moved) return; button.style.left=drag.left+dx+'px';button.style.top=drag.top+dy+'px';button.style.right=button.style.bottom='auto';mmLauncherClamp(button); });
-        button.addEventListener('pointerup', e => { if (!drag || drag.id!==e.pointerId) return; if (drag.moved) { try { hostWindow.localStorage.setItem(MM_LAUNCHER_KEY+'.position', JSON.stringify({x:button.offsetLeft,y:button.offsetTop})); } catch (_) {} } else open(); drag=null; });
+        button.addEventListener('pointerup', e => { if (!drag || drag.id!==e.pointerId) return; if (drag.moved) { try { hostWindow.localStorage.setItem(MM_LAUNCHER_KEY+'.position', JSON.stringify({x:button.offsetLeft,y:button.offsetTop})); } catch (_) {} } else integration.openChat(); drag=null; });
         button.addEventListener('pointercancel', () => { drag=null; });
     }
     function createMenuButton() {
@@ -4844,7 +4839,7 @@
         const target=root.querySelector('#extensions_settings2')||root.querySelector('#extensions_settings');
         if(!target){if(++mmSettingsAttempts<30)hostWindow.setTimeout(mmInjectExtensionSettings,1000);return;}
         try{
-            const script=root.currentScript?.src||[...root.scripts].map(s=>s.src)
+            const script=AWM_SCRIPT_URL||root.currentScript?.src||[...root.scripts].map(s=>s.src)
                 .find(src=>/\/(?:鲜虾鱼板面|mianmianmianmianmian)\/index\.js(?:\?|$)/.test(decodeURI(src)));
             const urls=[script&&new URL('settings.html',script),
                 '/scripts/extensions/third-party/mianmianmianmianmian/settings.html',
@@ -5354,6 +5349,14 @@
         hostWindow.__awmInlineCleanup=()=>{clearPendingColors();root.removeEventListener('pointermove',moveTap);root.removeEventListener('touchmove',moveTap);root.removeEventListener('wheel',dismissTap);root.removeEventListener('pointerdown',tapDown,true);root.removeEventListener('click',tapClick);tray.remove();delete hostWindow.__awmInlineHasPending;events?.removeListener?.(changedEvent,onChatChanged);activeObserver?.disconnect();delete hostWindow.__awmInlineFeatureSync;root.getElementById('awmInlineUndo')?.remove();cancel();clearTimeout(timer);bar.remove();root.removeEventListener('selectionchange',queue);root.removeEventListener('pointerup',queue);root.removeEventListener('scroll',scroll,true);hostWindow.removeEventListener('beforeunload',unload);};
     }
 
+    hostWindow.AmeFishboard = {
+        open(page='mianmian') { awmCurrentPage=page; open(); }, close,
+        getData:()=>clone(load()), searchPresets:mmPresetSearchOpen,
+        log:(stage,status,details)=>mmLog(stage,'integration',status,'',undefined,details),
+        report:()=>({version:'11.1',plugin:'鲜虾鱼板面',events:clone(mmDiagnostics)}),
+        exportDiagnostics:mmExportDiagnostics,
+        flush:()=>integration.storage.flush(),
+    };
     let mmInitialized=false;
     function init() {
         if(mmInitialized||!root.body)return;
@@ -5368,9 +5371,30 @@
         mmInjectExtensionSettings();
         mmBackupIdleInit();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V10.5 loaded');
+        console.log('[鲜虾鱼板面] V11.1 loaded');
+        integration.attach(hostWindow.AmeFishboard);
     }
 
-    if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
-    else hostWindow.setTimeout(init,0);
+    let bootstrapPending;
+    async function bootstrapRun() {
+        // Wait for Tavern startup without blocking its event dispatcher.
+        await mmBackupWaitReady();
+        integration=await import(integrationURL.href);
+        await integration.storage.prepare(mmStorageMode(),()=>hostWindow.SillyTavern?.getContext?.(),mmHelperFn);
+        if (integration.storage.initial) {runtimeData=mmNormalize(integration.storage.initial);tavernDataReady=true;}
+        if (integration.storage.error) {
+            addStyle(); mmAddStyle(); createMenuButton(); mmCreateLauncher();
+            integration.attach(hostWindow.AmeFishboard);return;
+        }
+        init();
+    }
+    function bootstrap(){
+        if(bootstrapPending)return bootstrapPending;
+        bootstrapPending=bootstrapRun().finally(()=>bootstrapPending=null);
+        return bootstrapPending;
+    }
+    hostWindow.AmeFishboard.retryStartup=async()=>{if(mmInitialized&&integration.storage.error)throw Error('保存已暂停，请先导出本页资料，避免丢失未保存的编辑');await bootstrap();if(integration.storage.error)throw integration.storage.error;root.getElementById('fishboard-recovery')?.remove();};
+    const boot=()=>bootstrap().catch(error=>{console.error('[鲜虾鱼板面] 启动失败',error);hostWindow.toastr?.error('鱼板面启动失败：'+error.message);});
+    if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',boot,{once:true});
+    else hostWindow.setTimeout(boot,0);
 })();
