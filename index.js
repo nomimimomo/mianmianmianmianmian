@@ -1,9 +1,7 @@
 'use strict';
 
 (function () {
-    const AWM_SCRIPT_URL = document.currentScript?.src || import.meta.url;
-    const integrationURL = new URL('./integration.js?v=11.6', import.meta.url);
-    let integration;
+    const AWM_SCRIPT_URL = document.currentScript?.src || '';
     const ID = 'ame-style-management-v05';
     const PANEL_ID = 'awm-panel-v03';
     const STYLE_ID = 'awm-style-v05';
@@ -38,7 +36,6 @@
     let runtimeData = null;
 
     const clone = x => JSON.parse(JSON.stringify(x));
-    const structuredClone=typeof hostWindow.structuredClone==='function'?hostWindow.structuredClone.bind(hostWindow):clone;
 
     function unique(arr) {
         return [...new Set((arr || []).map(x => String(x || '').trim()).filter(Boolean))];
@@ -57,7 +54,6 @@
         const tags = mmParseTags(s?.tags || []);
         if (oldGroup) tags.push(...oldGroup.split(/[,，、\s]+/));
         return {
-            ...clone(s || {}),
             id: s?.id || uid('style'),
             name,
             author: String(s?.author || ''),
@@ -69,7 +65,6 @@
 
     function normalizeData(x) {
         return {
-            ...clone(x || {}),
             styles: Array.isArray(x?.styles) ? x.styles.map(normalizeStyle) : [],
             quotes: Array.isArray(x?.quotes) ? x.quotes : [],
             quoteGroups: Array.isArray(x?.quoteGroups) ? x.quoteGroups : [],
@@ -92,7 +87,16 @@
     }
 
     function readTavernData() {
-        return integration.storage.read();
+        if (!canUseTavernStorage()) return null;
+        try {
+            const stored = mmHelperFn('getVariables') && mmHelperFn('insertOrAssignVariables')
+                ? mmHelperFn('getVariables')({ type: 'global' })?.[TAVERN_DATA_KEY]
+                : JSON.parse(hostWindow.SillyTavern.getContext().accountStorage.getItem(TAVERN_DATA_KEY) || 'null');
+            return stored && typeof stored === 'object' ? normalizeData(stored) : null;
+        } catch (err) {
+            console.error('[鲜虾鱼板面] 读取酒馆数据失败', err);
+            return null;
+        }
     }
 
     function mmOwnedStorage(store,key,value,remove=false){
@@ -101,13 +105,26 @@
         const after=store.getItem(key);mmLog('settingsWrite','settings',before===after?'unchanged':'field-updated','',undefined,{storage:store===hostWindow.localStorage?'localStorage':'accountStorage',fields:before===after?[]:[key],operation:remove?'remove':'set',serverConfirmed:false});
     }
     function writeTavernData(data) {
-        integration.storage.write(clone(data));
-        return true;
+        if (!canUseTavernStorage()) return false;
+        if(mmHelperFn('insertOrAssignVariables'))
+            mmHelperFn('insertOrAssignVariables')({ [TAVERN_DATA_KEY]: clone(data) }, { type: 'global' });
+        else mmOwnedStorage(hostWindow.SillyTavern.getContext().accountStorage,TAVERN_DATA_KEY,JSON.stringify(data));
+        mmLog('settingsWrite','settings','requested','',undefined,{fields:['extension_settings.variables.global.'+TAVERN_DATA_KEY],serverConfirmed:false});return true;
     }
 
     function clearTavernData() {
-        try{integration.storage.write(clone(DEFAULT));return true;}
-        catch(error){mmLog('clear','settings','failed',error);return false;}
+        if (!canUseTavernStorage()) return false;
+        try {
+            if (!mmHelperFn('getVariables') || !mmHelperFn('insertOrAssignVariables')) mmOwnedStorage(hostWindow.SillyTavern.getContext().accountStorage,TAVERN_DATA_KEY,undefined,true);
+            else if (mmHelperFn('deleteVariable')) mmHelperFn('deleteVariable')(TAVERN_DATA_KEY, { type: 'global' });
+            else {
+                throw Error('缺少单字段删除接口，未清空资料；已阻止整体替换全局变量');
+            }
+            return true;
+        } catch (err) {
+            console.error('[鲜虾鱼板面] 删除酒馆数据失败', err);
+            return false;
+        }
     }
 
     function hydrateTavernData() {
@@ -716,7 +733,6 @@
     }
 
     function open() {
-        if (integration.storage.error) { integration.showFailure(); return; }
         addStyle();
         makePanel();
         const panel = root.getElementById(PANEL_ID);
@@ -947,7 +963,7 @@
                     <details class="awm-details" data-style-key="${esc(s.id)}" ${Object.prototype.hasOwnProperty.call(styleUIState.styles, s.id) && styleUIState.styles[s.id] ? 'open' : ''} style="flex:1;min-width:0"><summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:5px;min-width:0;flex-wrap:nowrap">
                         <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${mmHighlight(s.name,main.querySelector('#asq2StyleSearch').value.trim())}</b>
                         
-                        <span class="awm-count" style="flex:0 0 auto">${integration.tokenMarkup(s.content)}</span>
+                        <span class="awm-count" style="flex:0 0 auto">${s.content.length}字</span>
                         <span class="awm-card-actions"><button class="awm-btn" data-copy="${esc(s.id)}" type="button">复制</button><button class="awm-btn" data-edit="${esc(s.id)}" type="button">编辑</button></span>
                     </summary>
                     <div style="white-space:pre-wrap;line-height:1.6;margin-top:7px;max-height:280px;overflow:auto">${mmHighlight(s.content,main.querySelector('#asq2StyleSearch').value.trim())}</div></details></div>
@@ -1068,12 +1084,12 @@
             <input class="awm-input" id="fAuthor" placeholder="作者（可留空）" value="${esc(old?.author||'')}">
             ${makeTagEditor(old?.tags||[])}
             <textarea class="awm-area awm-style-content" id="fContent" placeholder="把文风当作 TXT 直接编辑。换行会原样保留……">${esc(old?.content||'')}</textarea>
-            <div class="awm-count-line"><span id="fCount">${integration.tokenMarkup(old?.content||'')}</span></div>
+            <div class="awm-count-line"><span id="fCount">${(old?.content||'').length}字</span></div>
             <div class="awm-style-note"><label for="fNote">备注</label><textarea id="fNote" class="awm-area" placeholder="写一些自己的话或感想……">${esc(old?.note||'')}</textarea></div></div>`;
         bindTagEditor(main);
         const countEl=main.querySelector('#fCount'),contentEl=main.querySelector('#fContent');
         contentEl.addEventListener('focus',awmStartStyleFocus);
-        contentEl.addEventListener('input',()=>integration.countInto(countEl,contentEl.value));
+        contentEl.addEventListener('input',()=>countEl.textContent=contentEl.value.length+'字');
         main.querySelector('#fShowReplace').onclick=()=>{
             const panel=main.querySelector('#fReplacePanel');panel.hidden=!panel.hidden;
             main.querySelector('#fShowReplace').setAttribute('aria-expanded',String(!panel.hidden));
@@ -1089,7 +1105,7 @@
                 const next=load();next.styles.forEach(item=>{item.content=item.content.split(find).join(replacement)});save(next);
                 if(id&&next.styles.some(item=>item.id===id)){
                     contentEl.value=contentEl.value.split(find).join(replacement);
-                    integration.countInto(countEl,contentEl.value);
+                    countEl.textContent=contentEl.value.length+'字';
                 }
                 toast('已替换 '+count+' 处','success');
             });
@@ -1113,7 +1129,7 @@
                 main.querySelector('#fAuthor').value='';
                 contentEl.value=block.content||text;
                 const prepared=awmPrepareStyle({content:contentEl.value});contentEl.value=prepared.content;main.querySelector('#fNote').value=prepared.note;
-                integration.countInto(countEl,contentEl.value);
+                countEl.textContent=contentEl.value.length+'字';
                 return;
             }
             let picker=main.querySelector('#fImportPicker');
@@ -1130,7 +1146,7 @@
                 main.querySelector('#fAuthor').value='';
                 contentEl.value=block.content||'';
                 const prepared=awmPrepareStyle({content:contentEl.value});contentEl.value=prepared.content;main.querySelector('#fNote').value=prepared.note;
-                integration.countInto(countEl,contentEl.value);
+                countEl.textContent=contentEl.value.length+'字';
             };
             picker.onchange=fill;fill();
         };
@@ -1242,7 +1258,7 @@
             <label style="display:flex;align-items:center;gap:6px;padding:4px 2px;border-bottom:1px solid var(--SmartThemeBorderColor);cursor:pointer">
                 <input type="checkbox" class="json-pick" data-i="${i}" ${c.content.trim().length >= MIN_LEN ? 'checked' : ''}>
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name || '（未命名）')}</span>
-                <span style="opacity:.6;font-size:.82em;flex:0 0 auto">${integration.tokenMarkup(c.content)}</span>
+                <span style="opacity:.6;font-size:.82em;flex:0 0 auto">${c.content.length}字</span>
             </label>`).join('');
 
         layer.appendChild(box);
@@ -2076,14 +2092,14 @@
         if (!dialog.open) return;
         const vp=awmLayoutViewport(),band=awmLayoutVerticalBand(),mobile=awmLayoutDevice()==='mobile';
         const main=root.getElementById(PANEL_ID),visible=main&&hostWindow.getComputedStyle(main).display!=='none';
-        const bound=mmFeaturePosition(['awmPresetSearchDialog','awmPresetReferenceDialog'].includes(dialog.id)?'search':'backup');
+        const bound=mmFeaturePosition(dialog.id==='awmPresetSearchDialog'?'search':'backup');
         const rect=!bound&&visible?main.getBoundingClientRect():null;
         const state=awmLayoutState(),saved=bound||(state.locked?state.slots[state.slot]:state.current);
         const narrow=awmNarrowPanelWidth(vp),available=band.bottom-band.top;
         const margin=rect?0:8;
         const width=Math.min(vp.w-margin*2,rect?.width||(mobile?vp.w-24:(bound?.size||narrow?.width||saved?.size||680)));
         const height=Math.min(available,rect?.height||(mobile?Math.min(622,saved?.size||622):available));
-        const left=rect?.left??(bound?vp.x+(+bound.x||0)*vp.w:null)??narrow?.left??(saved?vp.x+(+saved.x||0)*vp.w:(['awmPresetSearchDialog','awmPresetReferenceDialog'].includes(dialog.id)&&!mobile?vp.x+vp.w-width-8:vp.x+(vp.w-width)/2));
+        const left=rect?.left??(bound?vp.x+(+bound.x||0)*vp.w:null)??narrow?.left??(saved?vp.x+(+saved.x||0)*vp.w:(dialog.id==='awmPresetSearchDialog'&&!mobile?vp.x+vp.w-width-8:vp.x+(vp.w-width)/2));
         const top=rect?.top??(saved?vp.y+(+saved.y||0)*vp.h:(mobile?band.top+(available-height)/2:band.top));
         Object.assign(dialog.style,{width:Math.max(0,width)+'px',height:Math.max(0,height)+'px',
             left:Math.max(vp.x+margin,Math.min(vp.x+vp.w-width-margin,left))+'px',
@@ -2241,16 +2257,15 @@
         status('已保存');
     }
 
-    async function mmPresetSearchOpen(options={}) {
-        const reference=options.reference===true,id=reference?'awmPresetReferenceDialog':'awmPresetSearchDialog';
-        if(!reference&&!mmFeatures().search)return;
-        const existing=root.getElementById(id);
-        if(existing){existing.querySelector('[data-search]')?.focus();return existing;}
+    async function mmPresetSearchOpen() {
+        if(!mmFeatures().search)return;
+        const existing=root.getElementById('awmPresetSearchDialog');
+        if(existing){existing.querySelector('[data-search]')?.focus();return;}
         let focus=mmPresetFocusState(),restoreOnClose=false;
         const dialog=root.createElement('dialog');
-        dialog.id=id;dialog.setAttribute('aria-labelledby',id+'Title');dialog.setAttribute('aria-modal','false');
+        dialog.id='awmPresetSearchDialog';dialog.setAttribute('aria-labelledby','awmPresetSearchTitle');dialog.setAttribute('aria-modal','false');
         dialog.innerHTML=`<div class="awm-tool-shell">
-            <header class="awm-tool-head"><h3 id="${id}Title">${reference?'预设查看':'预设全文搜索'}</h3><button type="button" data-close aria-label="关闭搜索">×</button></header>
+            <header class="awm-tool-head"><h3 id="awmPresetSearchTitle">预设全文搜索</h3><button type="button" data-close aria-label="关闭搜索">×</button></header>
             <div class="awm-preset-search-bar"><input type="search" data-search placeholder="搜索名称和正文" aria-label="搜索预设名称和正文" autocomplete="off"><select data-scope aria-label="搜索范围"><option value="enabled">已启用</option><option value="all">全部</option></select></div>
             <div class="awm-preset-summary-row"><p class="awm-preset-summary" data-summary role="status" aria-live="polite">读取当前预设…</p><button type="button" data-save disabled>保存</button></div><span class="awm-preset-save-status" data-save-status role="status"></span>
             <div class="awm-preset-results" data-results tabindex="0"></div>
@@ -2262,15 +2277,15 @@
         const q=key=>dialog.querySelector('[data-'+key+']');
         const el=(tag,className,text)=>{const node=root.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;};
         let native=null,ready=false,timer=null,viewId=null,marks=[],position=0,resultScroll=0;
-        let saving=false,draftName='',referenceRows=[],comparisonRows=null,comparisonDiff=null,peer=null,syncing=false,readEpoch=0;
+        let saving=false,draftName='';
         const drafts=new Map();
         const currentName=()=>(native?.promptManager?.serviceSettings||native?.oai_settings)?.preset_settings_openai;
         const keyword=()=>q('search').value.trim(),entries=()=>{
             if(drafts.size&&currentName()!==draftName)throw Error('预设已切换，请切回「'+draftName+'」保存未完成的修改');
-            return (reference?referenceRows.filter(p=>q('scope').value==='all'||p.enabled):mmPresetEntries(native,q('scope').value)).map(p=>({...p,...drafts.get(p.identifier)}));
+            return mmPresetEntries(native,q('scope').value).map(p=>({...p,...drafts.get(p.identifier)}));
         };
         const editField=(node,prompt,key)=>{
-            if(reference||prompt.marker)return;
+            if(prompt.marker)return;
             node.tabIndex=0;node.setAttribute('aria-label',key==='name'?'点击编辑条目名称':'点击编辑条目正文');
             const begin=()=>{
                 if(saving)return;
@@ -2306,11 +2321,7 @@
                 if(!prompt){viewId=null;q('view').hidden=true;q('results').hidden=false;search();return;}
                 viewId=identifier;marks=[];position=0;q('full').replaceChildren();q('full').classList.remove('awm-preset-editing-content');
                 const title=el('h4','awm-preset-full-title');if(prompt.name)mmPresetHighlight(title,prompt.name,keyword(),marks);else title.textContent='未命名条目';
-                const body=el('div','awm-preset-body');
-                if(reference&&peer?.isConnected&&comparisonRows)comparisonRows=peer.presetUI.entries();
-                const other=comparisonRows?.find(p=>p.identifier===prompt.identifier)||comparisonRows?.find(p=>p.name===prompt.name);
-                if(comparisonRows&&comparisonDiff){for(const part of comparisonDiff(prompt.content||'',other?.content||'').left){const span=el('span',part.changed?'awm-preset-difference':'');mmPresetHighlight(span,part.text,keyword(),marks);body.append(span);}}
-                else mmPresetHighlight(body,prompt.content,keyword(),marks);
+                const body=el('div','awm-preset-body');mmPresetHighlight(body,prompt.content,keyword(),marks);
                 q('full').append(title,body);editField(title,prompt,'name');editField(body,prompt,'content');if(!q('results').hidden)resultScroll=q('results').scrollTop;q('results').hidden=true;q('view').hidden=false;
                 jump(Math.min(index,Math.max(0,marks.length-1)));if(focusView)q('full').focus({preventScroll:true});
             }catch(error){fail(error);}
@@ -2326,7 +2337,6 @@
                     const hits=text?mmPresetHits(prompt,text):[];if(text&&!hits.length)continue;
                     count+=hits.length;items++;
                     const row=el('article','awm-preset-result'),head=el('div','awm-preset-result-head');
-                    row.dataset.presetEntry=prompt.identifier;
                     const name=el('button','awm-preset-entry-name');name.type='button';mmPresetHighlight(name,prompt.name||'未命名条目',text);
                     name.onclick=()=>showEntry(prompt.identifier);head.append(name);if(text)head.append(el('span','awm-preset-hit-count',hits.length+' 处'));row.append(head);
                     mmPresetHitGroups(prompt,hits).forEach(({hit,index})=>{
@@ -2336,7 +2346,7 @@
                         link.onclick=()=>showEntry(prompt.identifier,index);row.append(link);
                     });fragment.append(row);
                 }
-                q('summary').textContent=text?items+' 个条目 · '+count+' 处命中':(reference?'参考预设':'当前预设')+' · '+items+' 个条目';
+                q('summary').textContent=text?items+' 个条目 · '+count+' 处命中':'当前预设 · '+items+' 个条目';
                 if(!items)fragment.append(el('p','awm-preset-empty',text?'没有匹配的条目。':'当前范围没有条目。'));
                 q('results').append(fragment);q('results').scrollTop=0;
             }catch(error){fail(error);}
@@ -2392,32 +2402,7 @@
             });
         },{once:true});
         mmPresetWithoutBlur(focus,()=>{dialog.show();mmToolDialogBind(dialog);q('search').focus({preventScroll:true});});
-        native=await mmPresetNative();
-        dialog.presetUI={entries:()=>reference?referenceRows:mmPresetEntries(native,'all'),showEntry,
-            setComparison:(rows,diff)=>{comparisonRows=rows;comparisonDiff=diff;if(viewId!==null)showEntry(viewId,position,false);},
-            scroller:()=>q('view').hidden?q('results'):q('full')};
-        if(reference){
-            q('save').hidden=true;
-            const select=el('select','awm-reference-select');select.setAttribute('aria-label','查看预设');
-            for(const source of options.sources){const option=el('option','',source.label);option.value=source.id;select.append(option);}select.value=options.selected;
-            const compare=el('button','','对比当前预设');compare.type='button';compare.dataset.compare='';
-            q('summary').before(select);q('save').after(compare);
-            const loadReference=async()=>{const own=++readEpoch;select.disabled=true;try{const rows=await options.read(select.value);if(own!==readEpoch||!alive())return;referenceRows=rows;ready=true;search();if(peer?.isConnected)peer.presetUI.setComparison(referenceRows,options.diffText);if(options.entryId){showEntry(options.entryId);options.entryId='';}}catch(e){fail(e);}finally{select.disabled=false;}};
-            select.onchange=loadReference;
-            compare.onclick=async()=>{
-                if(comparisonRows){comparisonRows=null;peer?.presetUI?.setComparison(null,null);peer=null;compare.textContent='对比当前预设';if(viewId!==null)showEntry(viewId);return;}
-                peer=await mmPresetSearchOpen();if(!peer?.presetUI)return;
-                comparisonRows=peer.presetUI.entries();comparisonDiff=options.diffText;peer.presetUI.setComparison(referenceRows,options.diffText);compare.textContent='结束对比';
-                if(viewId!==null){showEntry(viewId);peer.presetUI.showEntry(viewId);}
-                const r=dialog.getBoundingClientRect();
-                if(innerWidth>=800){const width=Math.min(r.width,(innerWidth-24)/2);for(const d of [dialog,peer]){d.style.width=width+'px';d.style.height=r.height+'px';d.style.top=r.top+'px';}dialog.style.left='8px';peer.style.left=(innerWidth-width-8)+'px';}
-                else {peer.style.left=r.left+'px';peer.style.top=r.top+'px';peer.style.width=r.width+'px';peer.style.height=r.height+'px';peer.style.zIndex='100011';const back=el('button','','参考预设');back.type='button';back.dataset.referenceBack='';peer.querySelector('header').insertBefore(back,peer.querySelector('[data-close]'));back.onclick=()=>{peer.style.zIndex='100001';dialog.style.zIndex='100012';};dialog.style.zIndex='100010';}
-            };
-            const scroll=e=>{if(!peer?.isConnected||!comparisonRows||syncing)return;const from=dialog.presetUI.scroller(),to=peer.presetUI.scroller();if(e.target!==from&&e.target!==to)return;syncing=true;const a=e.target,b=a===from?to:from;b.scrollTop=a.scrollTop/Math.max(1,a.scrollHeight-a.clientHeight)*Math.max(0,b.scrollHeight-b.clientHeight);requestAnimationFrame(()=>syncing=false);};
-            root.addEventListener('scroll',scroll,true);dialog.addEventListener('close',()=>{root.removeEventListener('scroll',scroll,true);peer?.presetUI?.setComparison(null,null);peer?.querySelector('[data-reference-back]')?.remove();});
-            await loadReference();
-        }else{ready=true;q('save').disabled=false;search();}
-        return dialog;
+        native=await mmPresetNative();ready=true;q('save').disabled=false;search();
     }
     function mmPresetSearchAttach() {
         if(!mmFeatures().search){root.getElementById('awmPresetSearchButton')?.remove();return;}
@@ -2693,11 +2678,11 @@
     function mmFeatures() {
         try {
             const account=hostWindow.SillyTavern?.getContext?.()?.accountStorage;
-            return {editor:true,styles:true,search:true,inlineEdit:true,shrimp:true,...JSON.parse(account?.getItem?.(MM_FEATURE_KEY)||hostWindow.localStorage.getItem(MM_FEATURE_KEY)||'{}')};
-        } catch (_) { return {editor:true,styles:true,search:true,inlineEdit:true,shrimp:true}; }
+            return {editor:true,styles:true,search:true,inlineEdit:true,...JSON.parse(account?.getItem?.(MM_FEATURE_KEY)||hostWindow.localStorage.getItem(MM_FEATURE_KEY)||'{}')};
+        } catch (_) { return {editor:true,styles:true,search:true,inlineEdit:true}; }
     }
     function mmPageEnabled(page) {
-        const flags=mmFeatures();return page==='shrimp'?flags.shrimp:page==='mianmian'?flags.editor:page==='styles'?flags.styles:true;
+        const flags=mmFeatures();return page==='mianmian'?flags.editor:page==='styles'?flags.styles:true;
     }
     function mmFeatureApply() {
         awmSyncNav();
@@ -2705,7 +2690,7 @@
         if(panel&&panel.style.display!=='none'&&!mmPageEnabled(awmCurrentPage))render('settings');
         if(!mmFeatures().search)root.getElementById('awmPresetSearchDialog')?.close();
         mmPresetSearchAttach();
-        hostWindow.__awmInlineFeatureSync?.();hostWindow.dispatchEvent(new CustomEvent('fishboard-features-changed'));
+        hostWindow.__awmInlineFeatureSync?.();
     }
     function mmFeatureSet(key,enabled) {
         if(mmWriteLocked()||mmRuntime.loadWaiters.char||mmRuntime.loadWaiters.user)throw Error('请等待当前操作完成');
@@ -2718,7 +2703,7 @@
     }
     function bindExtensionSettings(main) {
         mmFeatureLayoutBind(main);
-        for(const [id,key] of [['awmShrimpEnabled','shrimp'],['awmEditorEnabled','editor'],['awmStylesEnabled','styles'],['awmSearchEnabled','search'],['awmInlineEditEnabled','inlineEdit']]) {
+        for(const [id,key] of [['awmEditorEnabled','editor'],['awmStylesEnabled','styles'],['awmSearchEnabled','search'],['awmInlineEditEnabled','inlineEdit']]) {
             const input=main.querySelector('#'+id);if(!input)continue;input.checked=mmFeatures()[key];
             input.onchange=()=>{try{mmFeatureSet(key,input.checked);}catch(error){input.checked=mmFeatures()[key];toast(error.message,'warning');}};
         }
@@ -3023,7 +3008,6 @@
         }
 
         return {
-            ...clone(x),
             styles:x.styles.map(normalizeStyle),
             quotes:x.quotes,
             quoteGroups:unique(x.quoteGroups),
@@ -3032,11 +3016,10 @@
         };
     }
 
-    async function exportAllData(){
+    function exportAllData(){
         try{
             mmPersistCurrent('char'); mmPersistCurrent('user');
             const pack=makeDataPackage(load());
-            pack.modules=await integration.exportModules();
             const text=JSON.stringify(pack,null,2);
             const blob=new Blob([text],{type:'application/json;charset=utf-8'});
             const url=hostWindow.URL.createObjectURL(blob);
@@ -3084,13 +3067,9 @@
             try{
                 const text=await file.text();
                 const next=parseDataPackage(text);
-                await integration.validateModules(JSON.parse(text).modules);
                 // .mian 已通过格式校验，直接覆盖当前插件数据。
                 // 不使用浏览器 confirm，避免酒馆/手机端弹窗兼容问题。
-                if(!JSON.parse(text).modules)await integration.preserveModules();
                 save(next);
-                await integration.storage.flush();
-                await integration.importModules(JSON.parse(text).modules);
                 render('styles');
                 toast('数据导入成功','success');
             }catch(err){
@@ -3165,7 +3144,7 @@
     }
     function mmExportDiagnostics() {
         mmLog('ui', 'settings', 'export-log');
-        const blob = new Blob([JSON.stringify({ version: '11.5', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ version: '10.5', events: mmDiagnostics, frontend: mmInlineEnvironment() }, null, 2)], { type: 'application/json' });
         const link = root.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = mmNextLogName(); link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 30000);
     }
@@ -3292,7 +3271,6 @@
         const data = normalizeData(x);
         const old = x && typeof x.mianmian === 'object' ? x.mianmian : {};
         data.mianmian = {
-            ...clone(old),
             drafts: {
                 char: old.drafts && typeof old.drafts.char === 'object' && old.drafts.char ? old.drafts.char : {},
                 user: old.drafts && typeof old.drafts.user === 'object' && old.drafts.user ? old.drafts.user : {}
@@ -3314,7 +3292,6 @@
         return readTavernData() || mmReadBrowser() || loadLocalData();
     }
     function mmWriteData(data) {
-        integration.storage.assertWritable();
         const value = mmNormalize(data);
         if (mmStorageMode() === 'browser') {
             hostWindow.localStorage.setItem(MM_LOCAL_KEY, JSON.stringify(value));
@@ -3331,11 +3308,7 @@
         const original = mmStorageMode(), value = mmNormalize(load());
         if (mode === 'tavern') {
             if (!canUseTavernStorage()) throw new Error('酒馆变量接口不可用');
-            mmSetStartupStage('正在读取原资料，最多等待 12 秒…');
-        await integration.storage.prepare('tavern',()=>hostWindow.SillyTavern?.getContext?.(),mmHelperFn);
-            integration.storage.assertWritable();
             writeTavernData(value);
-            await integration.storage.flush();
             const check = readTavernData();
             if (!check || JSON.stringify(mmNormalize(check)) !== JSON.stringify(value)) throw new Error('酒馆存储校验失败');
         } else {
@@ -4844,7 +4817,7 @@
         let drag = null;
         button.addEventListener('pointerdown', e => { drag = { id:e.pointerId,x:e.clientX,y:e.clientY,left:button.getBoundingClientRect().left,top:button.getBoundingClientRect().top,moved:false }; button.setPointerCapture(e.pointerId); });
         button.addEventListener('pointermove', e => { if (!drag || drag.id !== e.pointerId) return; const dx=e.clientX-drag.x,dy=e.clientY-drag.y; if (Math.abs(dx)+Math.abs(dy)>6) drag.moved=true; if (!drag.moved) return; button.style.left=drag.left+dx+'px';button.style.top=drag.top+dy+'px';button.style.right=button.style.bottom='auto';mmLauncherClamp(button); });
-        button.addEventListener('pointerup', e => { if (!drag || drag.id!==e.pointerId) return; if (drag.moved) { try { hostWindow.localStorage.setItem(MM_LAUNCHER_KEY+'.position', JSON.stringify({x:button.offsetLeft,y:button.offsetTop})); } catch (_) {} } else mmOpenEntry(); drag=null; });
+        button.addEventListener('pointerup', e => { if (!drag || drag.id!==e.pointerId) return; if (drag.moved) { try { hostWindow.localStorage.setItem(MM_LAUNCHER_KEY+'.position', JSON.stringify({x:button.offsetLeft,y:button.offsetTop})); } catch (_) {} } else open(); drag=null; });
         button.addEventListener('pointercancel', () => { drag=null; });
     }
     function createMenuButton() {
@@ -4860,7 +4833,7 @@
         b.id = 'awm-menu-button-v04';
         b.className = 'list-group-item flex-container flexGap5 interactable';
         b.innerHTML = '<span>🍥 鲜虾鱼板面</span>';
-        b.onclick = mmOpenEntry;
+        b.onclick = open;
         menu.prepend(b);
     }
 
@@ -4871,7 +4844,7 @@
         const target=root.querySelector('#extensions_settings2')||root.querySelector('#extensions_settings');
         if(!target){if(++mmSettingsAttempts<30)hostWindow.setTimeout(mmInjectExtensionSettings,1000);return;}
         try{
-            const script=AWM_SCRIPT_URL||root.currentScript?.src||[...root.scripts].map(s=>s.src)
+            const script=root.currentScript?.src||[...root.scripts].map(s=>s.src)
                 .find(src=>/\/(?:鲜虾鱼板面|mianmianmianmianmian)\/index\.js(?:\?|$)/.test(decodeURI(src)));
             const urls=[script&&new URL('settings.html',script),
                 '/scripts/extensions/third-party/mianmianmianmianmian/settings.html',
@@ -5381,15 +5354,6 @@
         hostWindow.__awmInlineCleanup=()=>{clearPendingColors();root.removeEventListener('pointermove',moveTap);root.removeEventListener('touchmove',moveTap);root.removeEventListener('wheel',dismissTap);root.removeEventListener('pointerdown',tapDown,true);root.removeEventListener('click',tapClick);tray.remove();delete hostWindow.__awmInlineHasPending;events?.removeListener?.(changedEvent,onChatChanged);activeObserver?.disconnect();delete hostWindow.__awmInlineFeatureSync;root.getElementById('awmInlineUndo')?.remove();cancel();clearTimeout(timer);bar.remove();root.removeEventListener('selectionchange',queue);root.removeEventListener('pointerup',queue);root.removeEventListener('scroll',scroll,true);hostWindow.removeEventListener('beforeunload',unload);};
     }
 
-    hostWindow.AmeFishboard = {
-        async open(page='mianmian') { await hostWindow.AmeFishboard.ensureData();awmCurrentPage=page;open(); }, close,
-        openChat:mmOpenEntry,shouldOpenChat:()=>!entryCancelled,
-        getData:()=>clone(load()), features:mmFeatures, searchPresets:mmPresetSearchOpen,
-        log:(stage,status,details)=>mmLog(stage,'integration',status,'',undefined,details),
-        report:()=>({version:'11.5',plugin:'鲜虾鱼板面',events:clone(mmDiagnostics)}),
-        exportDiagnostics:mmExportDiagnostics,
-        flush:()=>integration.storage.flush(),
-    };
     let mmInitialized=false;
     function init() {
         if(mmInitialized||!root.body)return;
@@ -5404,70 +5368,9 @@
         mmInjectExtensionSettings();
         mmBackupIdleInit();
         mmBackupSchedule(true);
-        console.log('[鲜虾鱼板面] V11.6 loaded');
-        integration.attach(hostWindow.AmeFishboard);
+        console.log('[鲜虾鱼板面] V10.5 loaded');
     }
 
-    // Opening a read-only panel must not wait on the backup cleaner's APP_READY gate.
-    async function mmWaitForContext(){
-        const started=Date.now();
-        while(Date.now()-started<20000){
-            let context;try{context=hostWindow.SillyTavern?.getContext?.();}catch(_){}
-            if(context&&typeof context.getRequestHeaders==='function'&&(context.accountStorage?.getItem||mmHelperFn('getVariables')||mmStorageMode()==='browser'))return context;
-            await new Promise(resolve=>hostWindow.setTimeout(resolve,100));
-        }
-        throw Error('酒馆接口尚未就绪，请等待酒馆载入后点重新读取');
-    }
-    function mmStartupNotice(message,failed=false){
-        let box=root.getElementById('fishboard-startup');
-        if(!box){box=root.createElement('section');box.id='fishboard-startup';box.setAttribute('role','status');box.style.cssText='position:fixed;z-index:2147483001;left:5vw;top:15vh;width:min(480px,90vw);box-sizing:border-box;padding:18px;border:1px solid var(--SmartThemeBorderColor,#666);border-radius:8px;background:var(--SmartThemeBlurTintColor,#292929);color:var(--SmartThemeBodyColor,#ddd);font:inherit;';box.innerHTML='<b>鲜虾鱼板面 V11.6</b><p data-message></p><button data-retry type="button">重新读取</button> <button data-report type="button">导出诊断日志</button> <button data-close type="button">关闭</button>';(root.body||root.documentElement).append(box);box.querySelector('[data-retry]').onclick=mmOpenEntry;box.querySelector('[data-report]').onclick=mmExportDiagnostics;box.querySelector('[data-close]').onclick=()=>{entryCancelled=true;box.remove();};}
-        box.querySelector('[data-message]').textContent=message;box.querySelector('[data-retry]').disabled=!failed;
-    }
-    let entryOpening,entryCancelled=false;
-    function mmOpenEntry(){
-        if(entryOpening)return entryOpening;
-        entryCancelled=false;entryOpening=(async()=>{
-            let noticeTimer=hostWindow.setTimeout(()=>{if(root.getElementById('shrimp-app')?.hidden!==false)mmStartupNotice('正在打开微信…');},700);
-            try{
-                await mmLoadModules();
-                if(!entryCancelled)await integration.toggleChat();
-                root.getElementById('fishboard-startup')?.remove();
-            }catch(error){mmLog('startup','integration','failed',error.message);mmStartupNotice(error.message,true);}
-            finally{hostWindow.clearTimeout(noticeTimer);}
-        })().finally(()=>entryOpening=null);
-        return entryOpening;
-    }
-    let startupStage='正在等待酒馆接口…';
-    function mmSetStartupStage(message){startupStage=message;const box=root.getElementById('fishboard-startup');if(box)mmStartupNotice(message);}
-    let bootstrapPending;
-    let modulesPending;
-    function mmLoadModules(){
-        if(modulesPending)return modulesPending;
-        modulesPending=(async()=>{
-            await mmWaitForContext();let timer;
-            try{integration=await Promise.race([import(integrationURL.href),new Promise((_,reject)=>{timer=hostWindow.setTimeout(()=>reject(Error('聊天模块加载超时，请检查扩展文件是否上传完整')),20000);})]);}
-            finally{hostWindow.clearTimeout(timer);}
-            addStyle();mmAddStyle();integration.attach(hostWindow.AmeFishboard);
-        })().catch(error=>{modulesPending=null;throw error;});
-        return modulesPending;
-    }
-    async function bootstrapRun() {
-        await mmLoadModules();
-        mmSetStartupStage('正在读取原资料，最多等待 12 秒…');
-        await integration.storage.prepare(mmStorageMode(),()=>hostWindow.SillyTavern?.getContext?.(),mmHelperFn);
-        if(integration.storage.error)throw integration.storage.error;
-        if (integration.storage.initial) {runtimeData=mmNormalize(integration.storage.initial);tavernDataReady=true;}
-        init();
-    }
-    function bootstrap(){
-        if(bootstrapPending)return bootstrapPending;
-        if(mmInitialized)return Promise.resolve();
-        bootstrapPending=bootstrapRun().finally(()=>bootstrapPending=null);
-        return bootstrapPending;
-    }
-    hostWindow.AmeFishboard.ensureData=async()=>{if(!mmInitialized)await bootstrap();if(integration.storage.error)throw integration.storage.error;return hostWindow.AmeFishboard.getData();};
-    hostWindow.AmeFishboard.retryStartup=async()=>{if(mmInitialized&&integration.storage.error)throw Error('保存已暂停，请先导出本页资料，避免丢失未保存的编辑');await bootstrap();if(integration.storage.error)throw integration.storage.error;root.getElementById('fishboard-recovery')?.remove();};
-    const boot=()=>{createMenuButton();mmCreateLauncher();bootstrap().catch(error=>{console.error('[鲜虾鱼板面] 启动失败',error);mmLog('startup','integration','failed',error.message);});};
-    if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',boot,{once:true});
-    else hostWindow.setTimeout(boot,0);
+    if(root.readyState==='loading')root.addEventListener('DOMContentLoaded',init,{once:true});
+    else hostWindow.setTimeout(init,0);
 })();
